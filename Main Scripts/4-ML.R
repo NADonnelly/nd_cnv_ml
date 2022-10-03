@@ -1,28 +1,18 @@
 
 # Introduction =========
 
-#What we are going to do here is to combine imputation, variable selection
-#and model fitting into one cross-validation process (possibly nested if I
-#can work that out).
+#What we do in this script is to combine imputation, variable selection
+#and model fitting into one nested cross-validation process:
 
-#So - we will start with the data filtered of the non-quantitative variables
+# - We start with the data filtered of the non-quantitative variables
 # - Then we will do our initial test/training split
 # - Then with the training data we will split into nested CV
-# - The inner folds will be used for the process of training imputation and
-#   variable selection models. I might also pop PLS in.
-# - Next we tune machine learning models as models x variable sets
-# - Use the outer folds to evaluate model performance
-
-#This does raise problems about comparing models though because if we do
-#variable selection within CV loops, how do we compare performance?
-#For the actual goals of this study, we are trying to both make a model that 
-#makes the best predictions on out-of-sample test data, and select a reduced
-#set of variables to make a screening questionnaire which is able to preserve
-#much of the accuracy that you get from having access to a full database of
-#research items, which are not practical to gather in the clinical setting
-
-#Of these objectives, the second is perhaps most important
-
+# - The inner folds will be used for the process of imputation and model training 
+# - The best models will be used for variable importance calculation.
+# - Next we tune machine learning models with sets of the most important variables
+#   using nested CV once more
+# - The best performing models are then applied to the test data and we measure
+#   model calibration
 
 
 # Load packages and data ========
@@ -33,14 +23,13 @@ pacman::p_load(tidyverse,tidymodels,workflowsets,tidyposterior,
                rstanarm,ggforce,doParallel,patchwork,
                DALEX,DALEXtra,readxl,lubridate, crayon)
 
-tidymodels_prefer()
-
-
-
 #Load the full dataset
-DF = read_csv("FilteredData2.csv")
+DF = read_csv("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/CleanedData.csv")
 
+#Set some preferences
+tidymodels_prefer()
 `%nin%` = Negate(`%in%`)
+
 
 
 # Initial data splits ========
@@ -88,20 +77,25 @@ n_inner    = 20
 n_fold     = 5
 
 
+
 # Prepare our initial data splits
 d_split = initial_split(DF1, strata = group,prop = split_prop)
+
 
 #Get test and training data
 d_train = training(d_split)
 d_test  = testing(d_split)
 
+
 #Get the IDs of the participants in the assessment.test split
 d_test_id = d_split |> complement()
+
 
 #Prepare for (nested) cross validation
 d_folds = nested_cv(d_train, 
                     outside = vfold_cv(v = n_fold, repeats = n_outer/n_fold, strata = group), 
                     inside  = bootstraps(times = n_inner, strata = group)) 
+
 
 # So the state of play is that we have:
 
@@ -110,22 +104,17 @@ d_folds = nested_cv(d_train,
 # - Nested CV datasets; each outer fold contains 390 individuals, split into 351 analysis, 39 assessment
 # - Nested CV inner folds contain 351 individuals, 123 assessment, 351 analysis bootstraps
 
-# We might have to start doing this in a messy way and then develop some functions to
-# streamline the code. But lets start
-
 
 
 # All variables ======
 
-#I would like to begin with a look at the full variable set. We would be doing any analysis on each folder
-#but lets look at all the training data together at first
-
+# We begin with ML on the full variable set.
 
 
 ## Fit models =====
 
-#OK so now we are going to do ML to the full variable set. To do nested CV we are going to loop
-#I know loops are bad etc but this is a good way to get going quickly. Plus I'm used to MATLAB
+#We are going to train ML models on the full variable set. To do nested CV we are going to use loops
+#I know loops are note very cool in R but this is a good way to get going quickly. Plus I'm used to MATLAB
 
 #Preallocate an output tibble
 d_fold_results = 
@@ -135,6 +124,8 @@ d_fold_results =
          .mod_posterior = vector(mode = "list",length = nrow(d_folds)))
 
 
+#Set up some preferences for the crayon package so we can print progress information to the command line
+#as our ML process can take a few hours and its helpful to have updates on progress
 fancy  <- combine_styles(make_style("ivory"), 
                          make_style("grey20", bg = TRUE))
 
@@ -150,6 +141,7 @@ for(i in 1:nrow(d_folds)){
       blue$underline$bold(nrow(d_folds)) %+% '\n'
   ))
   
+  
   #Get the outer data for this iteration of the loop
   d_outer = d_folds$splits[[i]]
   
@@ -162,7 +154,7 @@ for(i in 1:nrow(d_folds)){
   cat(fancy("Pre-processing..."), "\n")
   
 
-  #Set up a recipe with all the variables all at once, with imputation
+  #Set up a recipe with all the variables all at once, with imputation of missing data
   rec_impute =
     d_outer |>
     analysis() |>
@@ -179,8 +171,7 @@ for(i in 1:nrow(d_folds)){
   
   #Now, rather than impute on every single model training step,
   #we are going to do the imputation on this outer fold here
-  #I'm not sure if this is imperfect, but it is going to save a 
-  #lot of computational time
+
 
   #Prep a model for imputing missing data
   rec_impute_prep = 
@@ -213,23 +204,9 @@ for(i in 1:nrow(d_folds)){
     make_splits(d_impute,d_outer_test)
   
   
-  # #Given we have an imbalance between the number of cases and controls, should we be doing something about this?
-  # rec_themis = 
-  #   d_impute |>
-  #   recipe(group ~ .) |>
-  #   step_zv(all_predictors()) |>
-  #   step_smote(group,over_ratio = 1)
-  # 
-  
-  # rec_themis |>
-  #   prep() |>
-  #   bake(new_data = NULL) |>
-  #   count(group)
+  #Next we set up a set bunch of candidate ML models. Agreed with Marianne and Valentina:
 
-  
-  #Set up a bunch of potential models. Agreed with Marianne and Valentina:
-
-  # - Penalised Regression
+  # - Penalised Regression (e.g. elastic net regression)
   # - Linear SVM
   # - Random Forests
   # - Neural Network (with nnet for speed)
@@ -246,7 +223,7 @@ for(i in 1:nrow(d_folds)){
     set_engine("glmnet")
   
   
-  #Linear SVM
+  #Linear SVM with the kernlab package
   svm_l_spec = 
     svm_linear(cost   = tune(),
                margin = tune()) %>%
@@ -254,7 +231,8 @@ for(i in 1:nrow(d_folds)){
     set_mode("classification")
   
   
-  #Neural Network with nnet
+  #Neural Network with nnet (note I have tried other neural network models like brulee/tabnet - 
+  #they use a lot of cpu/gpu power without improving performance so we keep things simple)
   nnet_spec <- 
     mlp(hidden_units = tune(), 
         penalty      = tune(), 
@@ -263,17 +241,16 @@ for(i in 1:nrow(d_folds)){
     set_mode("classification")
   
   
-  #Random Forest
+  #Random Forest (I have experimented with gradient boosted trees e.g. XGBoost and ligthGBM and
+  #again they are slower and do not perform better in testing so we use random forests with ranger
+  #for speed)
   rf_spec <-
     rand_forest(mtry = tune(), min_n = tune(), trees = 1000) %>%
     set_engine("ranger") %>%
     set_mode("classification")
 
   
-  #Make workflow sets
-  
-  
-  #Some models will run in parallel happily
+  #Make workflow sets so we can run all out models together using the workflowsets package
   wf_par <- 
     workflow_set(
       preproc = list(impute       = rec_simple),
@@ -293,7 +270,7 @@ for(i in 1:nrow(d_folds)){
     )
   
   
-  #Set up to run these in parallel
+  #Set up to run these in parallel (I have a 16 core CPU so we use all 16 cores)
   registerDoFuture()
   plan(multisession, workers = 16)
   
@@ -365,6 +342,8 @@ for(i in 1:nrow(d_folds)){
 
   
   
+  #Evaluate models on the outer fold data
+  
   #Get the settings for the  best version of every model, fit to
   #the outer fold training data, and then test on the outer folder test
   #data
@@ -380,7 +359,7 @@ for(i in 1:nrow(d_folds)){
   best_results_wf = 
     best_results_wf |>
     
-    #We finalize the workflow by combining the best paramters with the workflows
+    #We finalize the workflow by combining the best parameters with the workflows
     mutate(best_wf_final  = map2(best_wf,best_params,~finalize_workflow(.x,.y))) |>
 
     #Fit the best models to the full training data for this outer fold and apply to the test 
@@ -436,9 +415,9 @@ for(i in 1:nrow(d_folds)){
 ## Summarise model performance =====
 
 #Save this (it takes an hour or so to fit!)
-write_rds(d_fold_results,"nested_cv_result_all_vars.rds")
+write_rds(d_fold_results,"C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/nested_cv_result_all_vars.rds")
 
-d_fold_results = read_rds("nested_cv_result_all_vars.rds")
+# d_fold_results = read_rds("nested_cv_result_all_vars.rds")
 
 
 ### Plot results ===== 
@@ -499,6 +478,7 @@ d_fold_results |>
   knitr::kable(format = "html", booktabs = TRUE) |>
   kableExtra::kable_styling(font_size = 11)
 
+
 ### Bayesian GLM of model performance ##########
 
 
@@ -552,9 +532,8 @@ p_all_vars =
   coord_cartesian(ylim = c(0.8,1)) +
   geom_hline(yintercept = 1,lty = 3) 
 
-
-#This might become part of something
 p_all_vars
+
 
 #Tabulate
 tab_post = 
@@ -615,22 +594,22 @@ left_join(tab_post,tab_mod_rel, by  ="Model")  |>
   knitr::kable(format = "html", booktabs = TRUE) |>
   kableExtra::kable_styling(font_size = 11)
 
+
 #So the SVM has the best overall performance, although the LR and RF models are very similar;
 #however the ANN performance is worse (although in absolute terms still very good)
 
-
 # At this point we could fit the best performing models to the full training data and test on the 
-#previous held out testing data. However, as we are going to do variable selection and fit models 
-#with reduced sets of variables, I think we stop now and look at variable importance, and then we
+# previous held out testing data. However, as we are going to do variable selection and fit models 
+# with reduced sets of variables, I think we stop now and look at variable importance, and then we
 # return to fit to the full data and test in the held out test data at the very end.
 
 
 ## Variable importance ====
 
 
-### Make full permutated dataset ======
+### Make full permuted dataset ======
 
-#We can use permutation based variable importance. We might need to have a full dataset for this, so 
+#We can use permutation based variable importance. We  need to have a full dataset for this, so 
 #we need to impute it. Lets do that
 
 #Set up a recipe with all the variables all at once, with imputation
@@ -657,26 +636,29 @@ d_test_impute =
   rec_impute_prep |>
   bake(new_data = d_test)
 
-#And combine
-#We now rebuild a split object with the imputed data
+
+#And combine - we rebuild a split object with the imputed training and test data
 d_last_fit = 
   make_splits(d_train_impute,d_test_impute)
 
 #Lets save this so we can use it again
-write_rds(d_last_fit,"nested_cv_imputed_data.rds")
-d_last_fit = read_rds("nested_cv_imputed_data.rds")
+write_rds(d_last_fit ,"C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/nested_cv_imputed_data.rds")
+# d_last_fit = read_rds("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/nested_cv_imputed_data.rds")
 
 
 #Select only the training data for this process
 d_pred = d_last_fit |> training()
 
+
+
 ### Define a function for determining variable importance =====
 
 get_variable_importance = function(cv_fold_results,cv_data_set,model_name,np = 100,nvar = 30){
   
-  
+  #Put in some crayon to print our status to the command line
   cat(bgWhite$blue$inverse$bold('Processing ' %+% model_name %+% '... \n'))
   
+  #Extract the model with the best AUC for variable importance calculation
   var_final_importance = 
     cv_fold_results |>
     unnest(.results) |>
@@ -684,16 +666,18 @@ get_variable_importance = function(cv_fold_results,cv_data_set,model_name,np = 1
     slice_max(best_roc_auc) |>
     mutate(fit_engine = map(outer_full_fit,~extract_fit_engine(.x) ))
   
-  
+  #make a DALEX model explainer
   model_explainer = 
     explain_tidymodels(model = var_final_importance$outer_full_fit[[1]]$.workflow[[1]],
-                       data = cv_data_set |> select(-group), 
-                       y    = cv_data_set$group == "ND-CNV")
+                       data  = cv_data_set |> select(-group), 
+                       y     = cv_data_set$group == "ND-CNV")
   
+  #Do the permtuation based variable importance (this is the slow bit)
   model_parts = model_parts(explainer = model_explainer,
                             type = "variable_importance",
                             B = np)
   
+  #Extract the nvar most important variables from our model
   best_vars = 
     model_parts |>
     as_tibble() |> 
@@ -767,11 +751,11 @@ plot_parts = function(part_data,title_string){
     theme_bw() +
     theme(panel.grid = element_blank()) +
     labs(x = "Change in AUC after permutation", y = "Variable", title = title_string) +
-    scale_x_continuous(trans = shift_trans(d=  part_data |>
-                                             as_tibble() |> 
-                                             filter(variable %in% c("_full_model_")) |>
-                                             summarise(mdl = mean(dropout_loss)) |>
-                                             pull(mdl)))  +
+    scale_x_continuous(trans = shift_trans(d = part_data |>
+                                                as_tibble() |> 
+                                                filter(variable %in% c("_full_model_")) |>
+                                                summarise(mdl = mean(dropout_loss)) |>
+                                                pull(mdl)))  +
     geom_vline(xintercept = part_data |>
                  as_tibble() |> 
                  filter(variable %in% c("_full_model_")) |>
@@ -825,6 +809,7 @@ vars_max =
 #Now we have our sets of variables, lets do our ML again with these subsets
 
 
+
 # Variable subset ML =======
 
 #Convert the sets of variables we selected above into formulas and then into recipes
@@ -864,8 +849,8 @@ names(final_recipes) <-
 
 
 #Save these variable sets
-write_rds(final_recipes,"nested_cv_selected_vars.rds")
-final_recipes = read_rds("nested_cv_selected_vars.rds")
+write_rds(final_recipes,"C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/nested_cv_selected_vars.rds")
+# final_recipes = read_rds("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/nested_cv_selected_vars.rds")
 
 
 
@@ -1145,15 +1130,15 @@ for(i in 1:nrow(d_folds)){
 
 
 #Save this (it takes an hour or so to fit!)
-write_rds(d_var_select_results,"nested_cv_result_selected_vars.rds")
+write_rds(d_var_select_results,"C:/Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/nested_cv_result_selected_vars.rds")
 
 
 ## Summarise model performance =====
 
 
 #Load all our models
-d_var_select_results = read_rds("nested_cv_result_selected_vars.rds")
-d_fold_results       = read_rds("nested_cv_result_all_vars.rds")
+d_var_select_results = read_rds("C:/Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/nested_cv_result_selected_vars.rds")
+d_fold_results       = read_rds("C:/Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/nested_cv_result_all_vars.rds")
 
 ### Make plots ######
 
@@ -1251,7 +1236,7 @@ cv_mod <-
 # cv_mod |> summary()
 
 
-### Figure 3: Alternative Top panel ======
+### Figure 3: Top panel ======
 
 
 #Lets make this into a plot
@@ -1304,8 +1289,7 @@ p_compare_vars
 
 ### Model Comparison model =====
 
-#So it looks like the subset of variables that were included in the top 30 variables of multiple 
-#ML models do best (better even that all variables)
+#So it looks like the subset of variables is the SVM top 30 variables
 
 cv_mod_post |> 
   group_by(mod_type)  |> 
@@ -1333,7 +1317,6 @@ cv_mod_post |>
 #You can do model comparison thus:
 cv_mod_compare <- 
   cv_results |> 
-  # mutate(wflow_id = relevel(factor(wflow_id),ref = "moreThanOne.vars_SVM.linear")) %>%
   mutate(wflow_id = relevel(factor(wflow_id),ref = "SVM_SVM.linear")) %>%
   stan_glmer(best_roc_auc ~ 1 + wflow_id + (1|id),
              data = .,
@@ -1350,7 +1333,6 @@ tab_mod_compare =
   bayestestR::describe_posterior(ci_method = "HDI") |>
   as_tibble() |>
   select(Parameter,Median, CI_low,CI_high,pd) |>
-  # mutate(Parameter = case_when(Parameter == "(Intercept)" ~ "moreThanOne.vars_SVM.linear",
   mutate(Parameter = case_when(Parameter == "(Intercept)" ~ "SVM_SVM.linear",
                                TRUE ~ Parameter)) |>
   mutate(Parameter = map_chr(Parameter,str_remove,"wflow_id")) |>
@@ -1368,7 +1350,7 @@ tab_mod_compare$`Probability of Direction`[1] = 1
 
 ### Table 3 ======
 
-#This is going to become table 3 so lets make it look nice
+#Prepare the table
 left_join(tab_mod_compare,
           cv_mod_post |> 
             mutate(across(where(is.double),round,digits = 3)) |>
@@ -1404,22 +1386,24 @@ tab_mod_compare |>
 
 
 
+
 # Fit final models to the test data ========
 
 
-## Prepare imputed test data =====
+## Load imputed test data =====
 
 
 #As we are interested in using the imputed dataset, we can load
 #the set that we made earlier
-d_last_fit = read_rds("nested_cv_imputed_data.rds")
+d_last_fit = read_rds("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/nested_cv_imputed_data.rds")
 
 #And load our models
-d_var_select_results = read_rds("nested_cv_result_selected_vars.rds")
+d_var_select_results = read_rds("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/nested_cv_result_selected_vars.rds")
+
 
 ## Fit and evaluate models to full training data =====
 
-# Now we fit our best models to the (imputed) training set
+# We fit our best models to the full imputed training set and evaluate on the imputed test data
 
 #Select the best set of parameters for each model - we will use the SVM variables as this appeared to have the best 
 #performance (although differences between sets was very small)
@@ -1432,6 +1416,7 @@ best_mods =
   group_by(mod_type) |>
   slice_max(best_roc_auc)
 
+#Use last_fit to evaluate performance of the final models
 best_mods = 
   best_mods |>
   mutate(test_fit = purrr::map(best_wf_final, last_fit,split = d_last_fit,metrics = metric_set(accuracy,kap,mn_log_loss,roc_auc,gain_capture))) |>
@@ -1467,7 +1452,7 @@ tab_mods =
   rename(gini_coefficient = gain_capture,
          model = mod_type) |>
   select(model,roc_auc,kap,mn_log_loss) 
-  # relocate(model,roc_auc,gini_coefficient,mn_log_loss,brier,kap,accuracy) 
+
 
 tab_mods |>
   knitr::kable(format = "html", booktabs = TRUE) |>
@@ -1606,7 +1591,7 @@ tab_boot |>
 
 ## read info from our database xlsx files
 DBIDs <-
-  read_xlsx("MASTERDATABASE_BE_09_11_18.xlsx", sheet = "IDs")
+  read_xlsx("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/MASTERDATABASE_BE_09_11_18.xlsx", sheet = "IDs")
 
 DBIDs <-
   DBIDs |> 
@@ -1880,7 +1865,7 @@ p_dens =
 
 ## Final variable Importance ======
 
-#We could look at the importance of each of the variables in our final model ....
+#We could look at the importance of each of the variables in our final model
 
 best_svm_importance = 
   best_mods |>
@@ -1909,13 +1894,14 @@ best_svm_parts = model_parts(explainer = best_svm_explainer,
                              type = "variable_importance",
                              B = 500)
 
+
 # Save this given it takes a long time
-write_rds(best_svm_parts, "./final_svm_variable_importance.rds")
-best_svm_parts = read_rds("./final_svm_variable_importance.rds")
+write_rds(best_svm_parts, "C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/final_svm_variable_importance.rds")
+# best_svm_parts = read_rds("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/final_svm_variable_importance.rds")
 
 
-#Get the names for our best variables (this is a bit circular)
-d_var = read_rds("nested_cv_selected_var_definitions_expanded.rds")
+#Get the names for our best variables (this is a bit circular as the definitions are made elsewhere)
+d_var = read_rds("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/nested_cv_selected_var_definitions_expanded.rds")
 
 #Tabulate our best variables
 best_svm_vars = 
@@ -2013,6 +1999,7 @@ p_12 | p_23 | p_34
 #You can see how clearly you can get good discrimination with just a few variables
 
 
+
 ## Figure 3: Performance Plot ======
 
 #So lets make a plot with our model performance data
@@ -2037,12 +2024,11 @@ p_perf =
 # p_performance = (p_perf / (p_age + p_gender) / p_best_var_imp) + plot_layout(heights = c(2,1,1))  + plot_annotation(tag_levels = "A")
 
 
-ggsave("./Figures/figure_3.pdf",p_perf,width = 5, height = 3)
-ggsave("./Figures/figure_3_vi.pdf",p_best_var_imp + plot_annotation(tag_levels = "A"),width = 5, height = 2)
-ggsave("./Figures/figure_3_compare_vars.pdf",p_compare_vars + plot_annotation(tag_levels = "A"),width = 5, height = 2.5)
+ggsave("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Figures/Figure Parts/figure_3.pdf",p_perf,width = 5, height = 3)
+ggsave("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Figures/Figure Parts/figure_3_vi.pdf",p_best_var_imp + plot_annotation(tag_levels = "A"),width = 5, height = 2)
+ggsave("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Figures/Figure Parts/figure_3_compare_vars.pdf",p_compare_vars + plot_annotation(tag_levels = "A"),width = 5, height = 2.5)
 
 
-#What if we add in the training data performance
 
 
 
@@ -2058,8 +2044,7 @@ best_vars =
 
 
 #We can look these items up in the data dictionary....
-#Read in Master participant list for confirmed genotypes
-VL <- readxl::read_excel("DATA ENTRY CODEBOOK .xlsx", 
+VL <- readxl::read_excel("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/DATA ENTRY CODEBOOK .xlsx", 
                          sheet = "VARIABLE LIST")
 
 #Wrangle lightly
@@ -2082,62 +2067,5 @@ print(VL,n = 30)
 
 #Save this
 write_rds(VL,"nested_cv_selected_var_definitions.rds")
-
-
-#Extract the smaller variable subset given this apparently offers identical performance
-
-best_vars_small = 
-  final_recipes$max.vars$var_info |> 
-  pull(variable)
-
-best_vars_small = 
-  best_vars_small[!str_detect(best_vars_small,"group")]
-
-#So just 10 items - are they all in the SVM variables?
-
-setdiff(best_vars_small,best_vars)
-
-#Actually no, there are 3 variables that are in the best set that are not in the 30...
-
-
-#We can look these items up in the data dictionary....
-#Read in Master participant list for confirmed genotypes
-VL_small <- readxl::read_excel("DATA ENTRY CODEBOOK .xlsx", 
-                         sheet = "VARIABLE LIST")
-
-#Wrangle lightly
-VL_small = 
-  VL_small |>
-  select(VARIABLE:`VARIABLE DEFINITION`) |>
-  filter(VARIABLE %in% best_vars_small)
-
-VL_small
-
-
-
-
-
-
-# Other stuff =====
-
-## Decision curve analysis =======
-
-#We could do this, but we don't have a realistic measure of prevalence in our model because
-#we have a very enriched sample for ND-CNV carriers
-library(dcurves)
-
-d_dca = 
-  best_mods$test_fit[[4]] |>
-  pull(.predictions) |>
-  pluck(1) 
-
-p_dca = 
-  dca(group ~ `.pred_ND-CNV`, d_dca, thresholds = seq(0, .9, by = 0.01)) %>%
-  plot(smooth = TRUE)
-
-
-(p_dens|p_thres|p_dca) + plot_annotation(tag_levels = "A")
-
-#' We could also think about doing ensembles here, but model performance is so good that it doesn't seem useful
 
 

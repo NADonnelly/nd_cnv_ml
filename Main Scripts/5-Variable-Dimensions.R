@@ -17,13 +17,13 @@ tidymodels_prefer()
 
 
 #Load the imputed dataset
-d_last_fit = read_rds("nested_cv_imputed_data.rds")
+d_last_fit = read_rds("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/nested_cv_imputed_data.rds")
 
 
 ## Prepare variable defintions =====
 
 #Load our final variables
-d_var = read_rds("nested_cv_selected_var_definitions.rds")
+d_var = read_rds("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/nested_cv_selected_var_definitions.rds")
 
 
 #We might benefit from make short names for each variable.
@@ -31,20 +31,20 @@ d_var = read_rds("nested_cv_selected_var_definitions.rds")
 #What do we got? We have 30 variables in total:
 
 #CAPA 
-# 1  pcb1i01         Anxious affect - ?Fear of activities in public                                              = FPB                                                                      
-# 2  pcb3i01         Anxious affect - ?Agoraphobia                                                               = AGO           
-# 3  pce0i01         Anxious affect - ?Fear of blood/injections                                                  = FBI                          
+# 1  pcb1i01         Anxious affect -  Fear of activities in public                                              = FPB                                                                      
+# 2  pcb3i01         Anxious affect -  Agoraphobia                                                               = AGO           
+# 3  pce0i01         Anxious affect -  Fear of blood/injections                                                  = FBI                          
 # 4  pcd2i01         Rumination, Obsessions and Compulsions - ?Rumination Intensity                              = RUM                       
-# 5  pda0i02         Depression  - ? Episode of Depressed mood intensity                                         = DeI                                       
-# 6  pda0i03         Depression  - ? Period of 2 continuous months without depressed mood in last year           = D2M                                                                         
-# 7  pda1i01         Depression  - ? Distinct quality of depressed mood                                          = DeQ                                       
+# 5  pda0i02         Depression  -   Episode of Depressed mood intensity                                         = DeI                                       
+# 6  pda0i03         Depression  -   Period of 2 continuous months without depressed mood in last year           = D2M                                                                         
+# 7  pda1i01         Depression  -   Distinct quality of depressed mood                                          = DeQ                                       
 # 8  pbe1i01         Physical symptoms on separation from caregiver (separation anxiety symptom)                 = SAP                                                                           
-# 9  pbe7i01         Separation Anxiety - ?Intensity of separation worries/anxiety (across multiple activities?) = SAI                                                                       
-# 10 pbf8i01         Separation Anxiety - ?Frequency of separation anxiety                                       = SAF                                
-# 11 pbf2i01         Separation Anxiety - ?Avoidance of sleeping away from family                                = SAS                                       
-# 12 pfb7i01         Sleep probs - ?Total Insomnia intensity                                                     = InT                         
-# 13 pfb7i02         Sleep probs - ?Initial insomnia intensity                                                   = InI                            
-# 14 prc8i01         hyperactivity - ?Forgetful in daily activities intensity                                    = FGT                                               
+# 9  pbe7i01         Separation Anxiety -  Intensity of separation worries/anxiety (across multiple activities)  = SAI                                                                       
+# 10 pbf8i01         Separation Anxiety -  Frequency of separation anxiety                                       = SAF                                
+# 11 pbf2i01         Separation Anxiety -  Avoidance of sleeping away from family                                = SAS                                       
+# 12 pfb7i01         Sleep probs -  Total Insomnia intensity                                                     = InT                         
+# 13 pfb7i02         Sleep probs -  Initial insomnia intensity                                                   = InI                            
+# 14 prc8i01         hyperactivity -  Forgetful in daily activities intensity                                    = FGT                                               
 # 15 prb8i01         Often blurts out answers to questions (ADHD Impulsivity/Hyperactivity symptom)              = BLT                                                                             
 # 16 pgc3i01         oppositional / conduct disorder  - Lying intensity                                          = LIE              
 # 17 pgc5i01         oppositional / conduct disorder  - Cheating intensity                                       = CHT                   
@@ -69,15 +69,16 @@ d_var = read_rds("nested_cv_selected_var_definitions.rds")
 # 30 CMD_10          Coordination and motor development - cuts pictures and shapes accurately                    = CCP   
  
 
+
 #We can try and get variable definitions from the spreadsheet found on the 
 #imagine-id website?
 
 #We can look these items up in the data dictionary....
-vd <- readxl::read_excel("Copy-of-F2f-data-dictionnary-assessment-questions-removed.xlsx", 
+vd <- readxl::read_excel("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/DATA DICTIONARY.xlsx", 
                          sheet = "Sheet1")
 
 #We have made a nice sheet of these definitions
-vd2 <- readxl::read_excel("Variable_definitions.xlsx", 
+vd2 <- readxl::read_excel("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/VariableDefinitions.xlsx", 
                           sheet = "Sheet1")
 
 
@@ -142,13 +143,6 @@ d_var =
 
 
 #Tabulate our variable definitions
-d_var  |>
-  knitr::kable(format = "html", booktabs = TRUE) |>
-  kableExtra::kable_styling(font_size = 11)
-
-
-
-
 d_var|>
   select(variable, Assessment, Section, short_name,var_def_long,`Paper Description`) |>
   rename(short_def = var_def_long,
@@ -159,9 +153,10 @@ d_var|>
 
 
 #Save this
-write_rds(d_var |>
-            janitor::clean_names(), 
-          "nested_cv_selected_var_definitions_expanded.rds")
+write_csv(d_var |>
+            janitor::clean_names() |>
+            select(variable,short_name,assessment,section,var_def_long,paper_description,dropout_loss,lower,upper), 
+          "C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/VariableDefinitionsExpanded.csv")
 
 
 
@@ -180,33 +175,13 @@ DF2 =
   DF |>
   select(all_of(d_var$variable)) 
 
-# - we can use the polychoric correlation method as in the original version of the paper
-
 
 ## Do Polychor Correlations ======
 
-#The code I inherited does a lot of fancy stuff to make a polychoric correlation matrix
-#with our variables, and then does PCA with that
-#
-# But we can do polychoric correlation directly within the pca function from psych, so why
-#wouldn't we do that?
-#
-#Well it turns out that doesn't work, annoyingly. I think from experimentation that this is
-#directly because there are too many variables?
+#Do the polychoric crrelation between all pairs of variables - sadly has to be done as a 
+#loop as the polychor function is not able to do more than a single pair of variables at 
+#a time
 
-#Or is there a problem with one variable? pbd7e01 is coded as either 0 or 2, but its dichotomous,
-# not continuous/polytomous. I think this is causing problems. But there are other issues
-
-#e.g. 
-# 
-# mixedCor(DF[,53:77] |>
-#             mutate(pbd7e01 = recode(pbd7e01, `2` = 1))|> 
-#            as.matrix(),
-#          global = F,smooth = T)
-#
-#Which I think is due to zero value cells when you crosstable variables.
-#
-#So instead we are going to use a loop via map to do each correlation via
 
 
 ## Set up dataframe for polychoric correlation calculation
@@ -272,9 +247,10 @@ r2 <- as.matrix(r2$mat)
 #Save up
 r2.df <- as.data.frame(r2)
 
-write_csv(r2.df, "nested_cv_corr_mat.csv")
+#Save this
+write_csv(r2.df, "C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/nested_cv_corr_mat.csv")
 
-r2.df = read_csv( "nested_cv_corr_mat.csv")
+# r2.df = read_csv( "C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/nested_cv_corr_mat.csv")
 
 
 ## Extract our variables of interest =====
@@ -502,7 +478,8 @@ p_EGA_boot_1 =
 p_EGA_boot_1
   
 
-ggsave("./Figures/figure_4_ega.pdf",plot = p_EGA_boot_1,width = 6,height = 3)
+ggsave("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Figures/Figure Parts/figure_4_ega.pdf",
+       plot = p_EGA_boot_1,width = 6,height = 3)
 
 
 
@@ -548,13 +525,13 @@ var_dims |>
 
 write_csv(var_dims |>
             select(variable,short_name,var_def,dim_name,dropout_loss,.lower,.upper), 
-          "nested_cv_variable_dimensions.csv")
+          "C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/nested_cv_variable_dimensions.csv")
 
 
 ## Table 6 ======
 
-var_dims = read_csv("nested_cv_variable_dimensions.csv")
-d_var    = read_rds("nested_cv_selected_var_definitions_expanded.rds")
+var_dims = read_csv("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/nested_cv_variable_dimensions.csv")
+d_var    = read_csv("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/nested_cv_selected_var_definitions_expanded.csv")
 
 #Make a table as in the manuscript
 
@@ -624,7 +601,11 @@ uva_0 = UVA(d_ega |> select(-group))
 #Apparently we have no redundant variables, which is nice
 
 
+
+
 # Factor analysis ======
+
+#This is an alternative to the EGA but we do not include it in the manuscript
 
 ## N Factors ======
 
@@ -821,233 +802,8 @@ p_loading_stack =
 
 p_corr_fa = (p_corr | p_loading_stack) + plot_layout(ncol = 2,widths = c(4,1))
 
-ggsave("./Figures/figure_4_corr_fa.pdf",plot = p_corr_fa,width = 10,height = 6)
+# ggsave("./Figures/figure_4_corr_fa.pdf",plot = p_corr_fa,width = 10,height = 6)
 
 
 
 
-# What do we do with this? =====
-
-#What if we took the variable from each factor with the highest importance and did a ML model with just those variables?
-#Then we would have a 6 item screener, which would be very handy and have some semi theoretical basis
-
-#Lets do this = 
-
-#Or ever the four items from the EGA
-
-vars_EGA = 
-  var_dims |>
-  group_by(dim_name) |>
-  slice_max(dropout_loss, n = 1) 
-
-
-#To do this with the factor loads we need to select the factor each variable loads most on I guess
-vars_FA = 
-  efa_6$rot_loadings[,] |> 
-  as_tibble(rownames = "Measure") |>
-  rename(motor      = V1,          
-         depression = V2,
-         sleep      = V3,
-         sep        = V4,
-         conduct    = V6,
-         speech     = V5)  |>
-  pivot_longer(-Measure,names_to = "factor",values_to = "loadings") |>
-   mutate(loadings = abs(loadings)) |>
-  group_by(Measure) |>
-  slice_max(loadings,n = 1) |>
-  rename(VARIABLE = Measure) |>
-  left_join(d_var,by = "VARIABLE") |>
-  ungroup() |>
-  group_by(factor) |>
-  slice_max(dropout_loss, n = 1) 
-
-#Now we can do away and do ML on these - but we can keep it simple and just use the linear SVM Model
-form_list = 
-  bind_rows(vars_FA |> 
-              mutate(type = "FA") ,
-            vars_EGA|> 
-              mutate(type = "EGA")) |>
-  group_by(type) |>
-  nest() |>
-  
-  #Make our formulas
-  mutate(formulas = map_chr(data,~paste("group ~",.x |> 
-                                          pull(VARIABLE) |> 
-                                          paste(collapse = " + ")))) |>
-  
-  #Make recipes which we will append our formulas into
-  mutate(recipes = map(formulas, ~recipe(formula = as.formula(.x),
-                                         data    = d_last_fit |> analysis()) |>
-                         step_zv(all_predictors())))
-
-#Extract the recipes and convert them into a named list
-final_recipes = 
-  form_list |>
-  pull(recipes) 
-
-names(final_recipes) <-  
-  form_list |> pull(type)
-
-
-#Save these variable sets
-write_rds(final_recipes,"ega_fa_selected_vars.rds")
-
-
-#Tabulate the variable descriptions
-final_recipes = read_rds("ega_fa_selected_vars.rds")
-
-
-vars_final  = 
-  bind_rows(
-    final_recipes$FA$var_info |> 
-      filter(variable != "group") |>
-      mutate("var_set" = "FA"),
-    final_recipes$EGA$var_info |> 
-      filter(variable != "group") |>
-      mutate("var_set" = "EGA"))
-
-
-#We can look these items up in the data dictionary....
-#Read in Master participant list for confirmed genotypes
-VL <- readxl::read_excel("DATA ENTRY CODEBOOK .xlsx", 
-                         sheet = "VARIABLE LIST")
-
-#Wrangle lightly
-VL = 
-  VL |>
-  select(VARIABLE:`VARIABLE DEFINITION`) |>
-  filter(VARIABLE %in% best_vars)
-
-vars_final = 
-  vars_final |>
-  mutate(var_def = map_chr(variable,~ VL |>
-                             select(VARIABLE:`VARIABLE DEFINITION`) |>
-                             filter(VARIABLE %in% .x) |>
-                             pull(`VARIABLE DEFINITION`)))
-
-
-
-
-
-# An extra something: EGA on all variables (yes all) =====
-
-
-
-#Lets load up
-pacman::p_load(tidyverse,tidymodels,
-               naniar,rgl,polycor,Matrix,
-               parallel,doSNOW,tcltk,
-               ggcorrplot,
-               qgraph, EGAnet, EFATools  )
-
-library(EFAtools)
-tidymodels_prefer()
-
-
-#Load the imputed dataset
-d_last_fit = read_rds("nested_cv_imputed_data.rds")
-
-
-
-d_ega = 
-  bind_rows(d_last_fit |> analysis(),
-            d_last_fit |> assessment()) |> relocate(group) |>
-  mutate(id = 1:n()) |>
-  select(-id)
-
-
-#Do a quick correlation plot where the variables are clumped by correlations, with no grouping 
-
-qgraph(cor_auto(d_ega), layout="spring")
-
-
-
-
-# exploratory graph analysis
-EGA_all <- EGA(d_ega |> select(-group), plot.EGA = TRUE)
-
-#It just looks like total chaos
-
-
-#Now we run the bootstrapped EGA method
-parallel:::setDefaultClusterOptions(setup_strategy = "sequential")
-
-EGA_boot_all <- bootEGA(d_ega |> select(-group), iter=20000)
-
-
-## Plot Graph =======
-
-#Plot our bootstrapped graph
-EGA_boot_all |> 
-  plot(plot.args = list(legend.names = c("1: social/communication",
-                                         "2: hyperactivity/conduct",
-                                         "3: speech/education",
-                                         "4: motor/coordination") )) +
-  labs(title = "EGA Plot")
-
-#This is the bit of the object that contains the useful data
-# EGA_boot_all$typicalGraph
-
-#The package also contains a function that makes a method section from the object (amazing!)
-methods.section(EGA_boot_all)
-
-
-## Extract dimensions =====
-
-## extract typical domains from bootstrap analysis and write to excel file to create table
-Typical <- EGA_boot_all$typicalGraph$typical.dim.variables
-
-
-#We need to think of some names for the dimensions
-
-# Dim 1 is social/communication
-# Dim 2 is hyperactivity/conduct
-# Dim 3 is speech/education
-# Dim 4 is motor/coordination
-
-#Glue that together with the variable information
-var_dims = 
-  Typical |>
-  as_tibble() |>
-  rename(`SHORT NAME` = items) |>
-  left_join(d_var,by = "SHORT NAME")
-
-
-var_dims = 
-  var_dims |> 
-  mutate(`DIM NAME` = case_when(
-    dimension == 1 ~ "social/communication",
-    dimension == 2 ~ "hyperactivity/conduct",
-    dimension == 3 ~ "speech/education",
-    dimension == 4 ~ "motor/coordination"))
-
-var_dims |> 
-  print(n = 29)
-
-#Save as a spreadsheet
-
-write_csv(var_dims |>
-            select(VARIABLE,`SHORT NAME`,`VARIABLE DEFINITION`,`DATA TYPE`,dimension,`DIM NAME`,
-                   dropout_loss,.lower,.upper), 
-          "nested_cv_variable_dimensions.csv")
-
-
-#Make a table as in the manuscript
-
-var_dims |>
-  select(`SHORT NAME`,`VARIABLE DEFINITION`,dimension,`DIM NAME`) |>
-  knitr::kable(format = "html", booktabs = TRUE) |>
-  kableExtra::kable_styling(font_size = 11)
-
-# Make a variable importance plot, but coloured by dimension
-
-var_dims |>
-  ggplot(aes(x = dropout_loss, y = forcats::fct_reorder(`SHORT NAME`,dropout_loss,max),
-             xmin = .lower, xmax = .upper, colour = `DIM NAME`)) +
-  geom_point(size = 4) +
-  geom_linerange() +
-  theme_bw() +
-  theme(panel.grid = element_blank()) +
-  labs(x = "Dropout Loss (1 - AUC)", y = "Variable", 
-       title = "Best SVM Model") +
-  facet_wrap(~`DIM NAME`, ncol = 1)

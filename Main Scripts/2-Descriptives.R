@@ -1,20 +1,19 @@
 # Introduction =========
 
-#This is the script that makes tables of the final selected participants and variables
-
-# Derived from Descriptives.Rmd
+#This is the script that makes tables of the final selected participants and their demographics 
 
 
-## load packages
+## load packages and data ======
 
+#Get packages
 pacman::p_load(tidyverse,tidymodels,readxl,gtsummary,lubridate)
 
+#Set preferences
 `%nin%` = Negate(`%in%`)
 
 
-
 #Load the full dataset
-DF = read_csv("FilteredData2.csv")
+DF = read_csv("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/CleanedData.csv")
 
 #Make the class labels
 D = 
@@ -24,19 +23,14 @@ D =
   relocate(group)
 
 
-#Load our final variables
-V = read_rds("nested_cv_selected_var_definitions.rds")
-
-
-
 # Participant Genotype Details ======
 
 
 #Load the meaning of each genotype code
-Gens <- read_excel("MASTER PARTICIPANT LIST.xlsx", sheet = 3)
+Gens <- read_excel("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/MASTER PARTICIPANT LIST.xlsx", sheet = 3)
 
 # Load the genotype for each participant
-MPL <- read_excel("MASTER PARTICIPANT LIST.xlsx", sheet = 1)
+MPL <- read_excel("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/MASTER PARTICIPANT LIST.xlsx", sheet = 1)
 
 
 #Join the data and the genotype data together
@@ -47,28 +41,11 @@ D2 <-
   relocate(IDs,group,GenotypeCode,CNV)
   
 
-#Tabulate our genotypes included
-table_genotype = 
-  D2 |>
-  count(CNV) |>
-  arrange(-n) 
-
-#Save for posterity
-write_csv(table_genotype, "./nested_cv_included_cnv.csv")
-
-#Make a nice table in the viewer
-table_genotype |>
-  knitr::kable(col.names = c("ND-CNV","N"),format = "html", booktabs = TRUE) |>
-  kableExtra::kable_styling(font_size = 11)
-
-
-#Now we look in more detail at the genotypes?
-
 table_genotype_detail = 
   D2 |> 
   select(IDs, CNV) |>
   left_join(  MPL |>
-                select(`Primary ID`, `Genotype as far as we know`) |>
+                select(`Primary ID`, `Genotype as far as we know`,`Recruitment CNV`) |>
                 rename(IDs = `Primary ID`),
               by = "IDs") |>
   mutate(CNV_detail = case_when(
@@ -76,26 +53,32 @@ table_genotype_detail =
     CNV == "Other (non-priority)"     ~ `Genotype as far as we know`,
     TRUE ~ CNV
   )) |>
+  mutate(CNV_detail = case_when(
+    is.na(CNV_detail) ~ `Recruitment CNV`,
+    TRUE ~ CNV_detail
+  )) |>
   count(CNV_detail)|>
   arrange(-n) 
 
-#Save for posterity
-write_csv(table_genotype_detail, "./nested_cv_included_cnv_detail.csv")
 
+#Tabulate in the viewer
 table_genotype_detail |>
   knitr::kable(col.names = c("ND-CNV","N"),format = "html", booktabs = TRUE) |>
   kableExtra::kable_styling(font_size = 11)
 
+
+#Save for posterity
+write_csv(table_genotype_detail, "C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/FinalIncludedGenotypes.csv")
 
 # Participant Demographics =====
 
 
 ## read info from our database xlsx files
 DBIDs <-
-  read_xlsx("MASTERDATABASE_BE_09_11_18.xlsx", sheet = "IDs")
+  read_xlsx("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/MASTERDATABASE_BE_09_11_18.xlsx", sheet = "IDs")
 
 Fam <- 
-  read_xlsx("MASTERDATABASE_BE_09_11_18.xlsx", sheet = "EPQ01-6 FamEnvHealth QA")
+  read_xlsx("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/MASTERDATABASE_BE_09_11_18.xlsx", sheet = "EPQ01-6 FamEnvHealth QA")
 
 
 
@@ -170,8 +153,7 @@ Education <-
 
 
 
-#So we have to do something different because the controls often have missing info?
-#So we need to duplicate non-missing data? This is the code used in the original draft
+#So we address controls often have missing info by duplicating across from the affected siblings
 Education = 
   d_family |>
   select(IDs,Family,group) |>
@@ -312,7 +294,7 @@ d_table |>
 # Figure 1 In R ======
 
 
-# What if we wanted to make figure 1 as a R plot?
+# Make figure 1 as a R plot?
 
 pacman::p_load(DiagrammeR,DiagrammeRsvg,xml2)
 
@@ -390,5 +372,5 @@ my_graph %>%
   write_xml("figure_1.svg")
 
 
-#Note we are going ot need to wrangle this lightly in Inkscape to get it perfect
+#And then we wrangle this lightly in Inkscape to get it perfect
 

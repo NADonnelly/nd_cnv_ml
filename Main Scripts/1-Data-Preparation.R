@@ -1,10 +1,7 @@
 
 # Introduction ======
 
-#In this script (which is based on Filtering_imagine.RMD) I am going to begin
-#the process of understanding the data analysis for the Baily Thomas paper
-
-#I will do translations into my own R style
+#In this script we load the raw data from the main database and clean it up
 
 # Load packages and set up ======
 
@@ -44,7 +41,7 @@ D <- lapply(c("IDs",
               "EPQ10 Social Comunication QA (…",
               "EPQ09 Strengths & Difficulties…"), 
             read_excel, 
-            path = "MASTERDATABASE_BE_09_11_18.xlsx", na=c("#NULL!","888","777","666","555","999"))
+            path = "C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/MASTERDATABASE_BE_09_11_18.xlsx", na=c("#NULL!","888","777","666","555","999"))
 
 
 #Merge list items together to create dataframe and wrangle variable names by replacing "#" with "." to match names properly
@@ -56,7 +53,7 @@ D0 =
 
 
 #Read in Master participant list for confirmed genotypes
-MPL <- read_excel("MASTER PARTICIPANT LIST.xlsx", 
+MPL <- read_excel("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/MASTER PARTICIPANT LIST.xlsx", 
                   sheet = "MASTER PARTICIPANT LIST")
 
 #Select IMAGINE_ID individuals 
@@ -142,6 +139,7 @@ DF =
 
 # table(DF$GenotypeCode)
 
+
 # Recode variables =====
 
 #At this stage, my understanding is that all our variables should be numeric, but some are
@@ -196,10 +194,6 @@ DF =
 ## CAPA variables ====
 
 # CAPA intensity variables recoding to 1/0
-
-#I don't know why the authors do this? Possibly because the non-zero
-#responses are low frequency?
-
 DF = 
   DF |>
   mutate(across(contains("i0"),~recode(.x, `3` = 1, `2` = 1, `0` = 0, .default = 999 ))) |>
@@ -292,8 +286,9 @@ p2 =
   ggplot(aes(prop_miss)) +
   geom_histogram(breaks = seq(0,1,0.01) )
 
-#So actually, we dont have many variables we lose, and also we can threshold at 0.25 and not lose any 
-#additional variables
+p1 + p2
+
+#So actually, we don't have many variables we lose, and also we can threshold at 0.25 
 
 #Select only those variables which are < threshold missing
 DF2 = 
@@ -335,13 +330,16 @@ DF3  =
 
 # table(DF3$GenotypeCode)
 
-#This leaves us with 489 individuals, 236 variables (234 informative) and 113 controls
+#This leaves us with 489 individuals, 236 variables (233 informative) and 113 controls
+
+
+
 
 # Save Up =====
 
-## write out filtered data for use in further analysis
-write_csv(DF3 |> select(-prop_miss), "FilteredData2.csv")
 
+## write our filtered data for use in further analysis
+write_csv(DF3 |> select(-prop_miss), "C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/CleanedData.csv")
 
 
 ## Save a variable of only IDs and genotypes 
@@ -351,8 +349,12 @@ ID_Gens =
   add_count(GenotypeCode) |>
   select(-n)
 
-table(ID_Gens$GenotypeCode)
+#Tabulate the genotypes of all the included participants
+#Controls are code 16
+ID_Gens |> 
+  count(GenotypeCode) |> 
+  print(n = 23)
 
 ## Write out separate file of ids and genotypes
-write_csv(ID_Gens, "ID_Gens2.csv")
+write_csv(ID_Gens, "C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/ParticipantGenotypes.csv")
 
