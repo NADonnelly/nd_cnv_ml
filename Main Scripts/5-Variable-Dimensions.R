@@ -602,7 +602,6 @@ uva_0 = UVA(d_ega |> select(-group))
 
 
 
-
 # Factor analysis ======
 
 #This is an alternative to the EGA but we do not include it in the manuscript
@@ -803,6 +802,110 @@ p_loading_stack =
 p_corr_fa = (p_corr | p_loading_stack) + plot_layout(ncol = 2,widths = c(4,1))
 
 # ggsave("./Figures/figure_4_corr_fa.pdf",plot = p_corr_fa,width = 10,height = 6)
+
+
+
+
+
+# Prepare Minimal Variable Set =====
+
+#What if we took the variable from each factor with the highest importance and did a ML model with just those variables?
+#Then we would have a 6 item screener, which would be very handy and have some semi theoretical basis
+
+#Lets do this = 
+
+#Or ever the four items from the EGA
+
+vars_EGA = 
+  var_dims |>
+  group_by(dim_name) |>
+  slice_max(dropout_loss, n = 1) 
+
+
+#To do this with the factor loads we need to select the factor each variable loads most on I guess
+vars_FA = 
+  efa_6$rot_loadings[,] |> 
+  as_tibble(rownames = "Measure") |>
+  rename(motor      = V1,          
+         depression = V2,
+         sleep      = V3,
+         sep        = V4,
+         conduct    = V6,
+         speech     = V5)  |>
+  pivot_longer(-Measure,names_to = "factor",values_to = "loadings") |>
+  mutate(loadings = abs(loadings)) |>
+  group_by(Measure) |>
+  slice_max(loadings,n = 1) |>
+  rename(VARIABLE = Measure) |>
+  left_join(d_var,by = "VARIABLE") |>
+  ungroup() |>
+  group_by(factor) |>
+  slice_max(dropout_loss, n = 1) 
+
+#Now we can do away and do ML on these - but we can keep it simple and just use the linear SVM Model
+form_list = 
+  bind_rows(vars_FA |> 
+              mutate(type = "FA") ,
+            vars_EGA|> 
+              mutate(type = "EGA")) |>
+  group_by(type) |>
+  nest() |>
+  
+  #Make our formulas
+  mutate(formulas = map_chr(data,~paste("group ~",.x |> 
+                                          pull(VARIABLE) |> 
+                                          paste(collapse = " + ")))) |>
+  
+  #Make recipes which we will append our formulas into
+  mutate(recipes = map(formulas, ~recipe(formula = as.formula(.x),
+                                         data    = d_last_fit |> analysis()) |>
+                         step_zv(all_predictors())))
+
+#Extract the recipes and convert them into a named list
+final_recipes = 
+  form_list |>
+  pull(recipes) 
+
+names(final_recipes) <-  
+  form_list |> pull(type)
+
+
+#Save these variable sets
+write_rds(final_recipes,"ega_fa_selected_vars.rds")
+
+
+#Tabulate the variable descriptions
+final_recipes = read_rds("ega_fa_selected_vars.rds")
+
+
+vars_final  = 
+  bind_rows(
+    final_recipes$FA$var_info |> 
+      filter(variable != "group") |>
+      mutate("var_set" = "FA"),
+    final_recipes$EGA$var_info |> 
+      filter(variable != "group") |>
+      mutate("var_set" = "EGA"))
+
+
+#We can look these items up in the data dictionary....
+#Read in Master participant list for confirmed genotypes
+VL <- readxl::read_excel("DATA ENTRY CODEBOOK .xlsx", 
+                         sheet = "VARIABLE LIST")
+
+#Wrangle lightly
+VL = 
+  VL |>
+  select(VARIABLE:`VARIABLE DEFINITION`) |>
+  filter(VARIABLE %in% best_vars)
+
+vars_final = 
+  vars_final |>
+  mutate(var_def = map_chr(variable,~ VL |>
+                             select(VARIABLE:`VARIABLE DEFINITION`) |>
+                             filter(VARIABLE %in% .x) |>
+                             pull(`VARIABLE DEFINITION`)))
+
 
 
 

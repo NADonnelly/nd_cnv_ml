@@ -15,3 +15,5 @@ The Main Scripts folder contains the R scripts that do the analysis:
 * 4-ML.R fits machine learning models to the full set of variables using nested cross validation, determines variable importance with permutation testing, selects the most important variables from the models and re-fits ML models with the reduce variable sets, then fits models with the final sets of variables and final model hyperparameters to the held-out test data
 
 * 5-Variable-Dimensions.R uses exploratory graph analysis to investigate the underlying dimensional structure of the variables selected to be most important to ND-CNV classification.
+
+* 6-ML-Final.R takes the minimal set of variables from the dimensions identified by the EGA analysis and fits the ML classification models using only these variables, and measures performance
