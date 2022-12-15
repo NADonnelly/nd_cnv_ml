@@ -53,7 +53,7 @@ d_var = read_rds("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV
 # 18 P_Health_dev_9  Health and Development - Is your child behind in reading                                    = REA                  
 # 19 P_Health_dev_11 Health and Development - educationally statemented                                          = EST                                  
 # 20 P_Health_dev_13 Health and Development - did your child walk by 18 months                                   = W18                            
-# 21 P_Health_dev_15 Health and Development - has your chld had speech therapy                                   = SLT                        
+# 21 P_Health_dev_15 Health and Development - has your child had speech therapy                                  = SLT                        
 # 22 P_Health_dev_21 Health and Development - other problems with airways/lungs                                  = LUN               
 # 23 P_Health_dev_24 Health and Develpoment - heart problems                                                     = CAR                                     
 # 24 P_Health_dev_27 Health and Development - skeletal or muscular problems                                      = MSK                      
@@ -806,7 +806,6 @@ p_corr_fa = (p_corr | p_loading_stack) + plot_layout(ncol = 2,widths = c(4,1))
 
 
 
-
 # Prepare Minimal Variable Set =====
 
 #What if we took the variable from each factor with the highest importance and did a ML model with just those variables?
@@ -871,13 +870,15 @@ names(final_recipes) <-
 
 
 #Save these variable sets
-write_rds(final_recipes,"ega_fa_selected_vars.rds")
+write_rds(final_recipes,"C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/final_selected_vars.rds")
 
 
-#Tabulate the variable descriptions
-final_recipes = read_rds("ega_fa_selected_vars.rds")
+## Tabulate the variable descriptions ========
+
+final_recipes = read_rds("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/final_selected_vars.rds")
 
 
+#We can look these items up in the data dictionary
 vars_final  = 
   bind_rows(
     final_recipes$FA$var_info |> 
@@ -888,25 +889,8 @@ vars_final  =
       mutate("var_set" = "EGA"))
 
 
-#We can look these items up in the data dictionary....
-#Read in Master participant list for confirmed genotypes
-VL <- readxl::read_excel("DATA ENTRY CODEBOOK .xlsx", 
-                         sheet = "VARIABLE LIST")
+d_var = read_csv("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/VariableDefinitionsExpanded.csv")
 
-#Wrangle lightly
-VL = 
-  VL |>
-  select(VARIABLE:`VARIABLE DEFINITION`) |>
-  filter(VARIABLE %in% best_vars)
-
-vars_final = 
-  vars_final |>
-  mutate(var_def = map_chr(variable,~ VL |>
-                             select(VARIABLE:`VARIABLE DEFINITION`) |>
-                             filter(VARIABLE %in% .x) |>
-                             pull(`VARIABLE DEFINITION`)))
-
-
-
-
-
+d_var |> 
+  filter(variable %in% vars_final$variable) |>
+  pull(paper_description)

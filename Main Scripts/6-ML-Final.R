@@ -1,9 +1,8 @@
 
 # Introduction =========
 
-#Here we take the lead variables from each fo the dimensions/factors
+#Here we take the most important variables from each of the dimensions
 #Identified in our EGA analysis and we do a final round of ML with them
-
 
 
 # Load packages and data ========
@@ -57,6 +56,7 @@ DF1 =
   DF0 |>
   mutate(across(is_int_var |> filter(all_int == T) |> pull(name), as.integer)) 
 
+
 #Set a random number seed for reproducibility
 set.seed(09062022)
 
@@ -82,8 +82,7 @@ d_test_id = d_split |> complement()
 
 
 #Load our recipes
-final_recipes = read_rds("ega_fa_selected_vars.rds")
-
+final_recipes = read_rds("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/final_selected_vars.rds")
 
 
 #Now prepare for our nested cross validation
@@ -308,16 +307,18 @@ for(i in 1:nrow(d_folds)){
 
 
 #Save this (it takes an hour or so to fit!)
-write_rds(d_var_select_results,"nested_cv_result_ega_fa_vars.rds")
+write_rds(d_var_select_results,"C:/Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/nested_cv_result_ega_vars.rds")
+
+
 
 
 ## Summarise model performance =====
 
 
 #Load all our models
-d_var_ega_fa_results = read_rds("nested_cv_result_ega_fa_vars.rds")
-d_var_select_results = read_rds("nested_cv_result_selected_vars.rds")
-d_fold_results       = read_rds("nested_cv_result_all_vars.rds")
+d_var_ega_fa_results = read_rds("C:/Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/nested_cv_result_ega_vars.rds")
+d_var_select_results = read_rds("C:/Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/nested_cv_result_selected_vars.rds")
+d_fold_results       = read_rds("C:/Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/nested_cv_result_all_vars.rds")
 
 ### Make plots ######
 
@@ -539,29 +540,34 @@ left_join(tab_mod_compare,
 
 #As we are interested in using the use imputed dataset, we can load
 #the set that we made earlier
-d_last_fit = read_rds("nested_cv_imputed_data.rds")
 
+d_last_fit        = read_rds("C:/Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/nested_cv_imputed_data.rds")
+d_var_ega_results = read_rds("C:/Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/nested_cv_result_ega_vars.rds")
 
-d_var_ega_fa_results = read_rds("nested_cv_result_ega_fa_vars.rds")
 
 ## Fit and evaluate models to full training data =====
 
 # Now we fit our best models to the (imputed) training set
 
-
 #Select the best set of parameters for each model - we will use the SVM variables as this appeared to have the best 
 #performance (although differences between sets was very small)
 best_mods = 
-  d_var_ega_fa_results |>
+  d_var_ega_results |>
   select(-.mod_posterior) |>
   unnest(.results) |> 
-  separate(wflow_id,into = c("vars","mod_type"),sep = "_", extra = "merge") |>
+  separate(wflow_id,
+           into = c("vars","mod_type"),
+           sep = "_", 
+           extra = "merge") |>
   group_by(vars) |>
   slice_max(best_roc_auc)
 
 best_mods = 
   best_mods |>
-  mutate(test_fit = purrr::map(best_wf_final, last_fit,split = d_last_fit,metrics = metric_set(accuracy,kap,mn_log_loss,roc_auc,gain_capture))) |>
+  mutate(test_fit = purrr::map(best_wf_final, 
+                               last_fit,
+                               split = d_last_fit,
+                               metrics = metric_set(accuracy,kap,mn_log_loss,roc_auc,gain_capture))) |>
   mutate(best_metrics = map(test_fit, ~.x$.metrics[[1]]))
 
 
@@ -599,6 +605,19 @@ tab_mods =
 tab_mods |>
   knitr::kable(format = "html", booktabs = TRUE) |>
   kableExtra::kable_styling(font_size = 11)
+
+
+
+#What are the actual numbers of test participants classified
+best_mods |>
+  filter(mod_type == "SVM.linear" & vars == "EGA") |> 
+  select(test_fit) |>
+  ungroup() |>
+  unnest(test_fit) |> 
+  select(.predictions) |>
+  unnest(.predictions) |>
+  conf_mat(group,.pred_class) 
+
 
 
 ## Bootstrap some confidence intervals =====
@@ -668,16 +687,20 @@ tab_boot =
 ## Table 7? ======
 
 #We need the names of the variables
-d_var = read_rds("nested_cv_selected_var_definitions_expanded.rds")
+d_var = read_csv("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/VariableDefinitionsExpanded.csv")
+
+d_var = 
+  d_var |>
+  janitor::clean_names()
+
 
 vars_EFA = final_recipes$FA$var_info |> 
   filter(variable != "group") %>% pull(variable) 
 
 
-
-
 vars_EGA = final_recipes$EGA$var_info |> 
   filter(variable != "group") %>% pull(variable) %>% as.character()
+
 
 tab_vars =
   tibble(vars = c("FA","EGA"),
@@ -701,7 +724,7 @@ tab_vars =
 tab_boot |>
   left_join(tab_vars,by = "vars") |>
   mutate(across(where(is.double),round,digits = 3)) |>
-  mutate(Performance = paste(.estimate,"[",.lower,", ",.upper,"]",sep = "")) |>
+  mutate(Performance = paste(.estimate," [",.lower,", ",.upper,"]",sep = "")) |>
   select(vars,var_names,.metric,Performance) |>
   rename(`Variable Set` = vars,
          `Variable Names` = var_names) |>

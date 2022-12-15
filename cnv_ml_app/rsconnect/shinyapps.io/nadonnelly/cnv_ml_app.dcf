@@ -1,0 +1,13 @@
+name: cnv_ml_app
+title:
+username:
+account: nadonnelly
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 7782951
+bundleId: 6577681
+url: https://nadonnelly.shinyapps.io/cnv_ml_app/
+when: 1669909565.75598
+lastSyncTime: 1669909565.75599
+asMultiple: FALSE
+asStatic: FALSE

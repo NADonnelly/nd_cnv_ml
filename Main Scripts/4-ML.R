@@ -1458,6 +1458,15 @@ tab_mods |>
   knitr::kable(format = "html", booktabs = TRUE) |>
   kableExtra::kable_styling(font_size = 11)
 
+#What are the actual numbers of test participants classified
+best_mods |>
+  filter(mod_type == "SVM.linear") |> 
+  select(test_fit) |>
+  ungroup() |>
+  unnest(test_fit) |> 
+  select(.predictions) |>
+  unnest(.predictions) |>
+  conf_mat(group,.pred_class) 
 
 ## Bootstrap some confidence intervals =====
 

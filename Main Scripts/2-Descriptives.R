@@ -70,6 +70,118 @@ table_genotype_detail |>
 #Save for posterity
 write_csv(table_genotype_detail, "C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/FinalIncludedGenotypes.csv")
 
+
+#Lets use the new spreadsheet from Sam Chawner
+
+mpl  <- read_excel("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/ParticipantGenotypes.xlsx", sheet = 1)
+gens <- read_excel("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/ParticipantGenotypes.xlsx", sheet = 2)
+
+#First of all, lets confirm that all the controls are the same genotype in both spreadsheets - 
+DF |>
+  select(IDs,GenotypeCode)  |>
+  janitor::clean_names() |>
+  rename(id = i_ds) |>
+  left_join(mpl |> 
+              select(`Primary ID`,`Genotype as far as we know`, `Genotype code`) |>
+              janitor::clean_names() |>
+              rename(id = primary_id),
+            by = "id")|>
+  relocate(id,genotype_as_far_as_we_know, genotype_code.x,genotype_code.y) |>
+  filter(str_detect(genotype_as_far_as_we_know,"Control")) |>
+  print(n = 500)
+
+#Yes they are!
+
+#Now lets inspect our counts of genotypes
+gens |> print(n = 30)
+
+d_ids = DF |>
+  select(IDs)  |>
+  rename(id = IDs) |>
+  pull(id)
+
+d_genotypes = 
+  mpl |> 
+  select(`Primary ID`,`Genotype as far as we know`, `Genotype code`) |>
+  janitor::clean_names() |>
+  rename(id = primary_id) |>
+  filter(id %in% d_ids) |>
+  left_join(gens |> 
+              janitor::clean_names() |> 
+              rename(genotype_code = code) |>
+              mutate(genotype_code = as.double(genotype_code))|>
+              drop_na(genotype_code),
+            by = "genotype_code") 
+
+
+#OK so we now need to do a few extra things. We need to convert any groups is n < 5 into "other"
+#We need to make a list of all the genotypes collapsed into the "other" group
+#We need to decide what to do with the "more than 1 cnv" group (code 21)
+
+#First lets look into group 21
+
+d_genotypes |>
+  filter(genotype_code == 21) |>
+  group_by(genotype_as_far_as_we_know) |>
+  count() |>
+  arrange(-n)
+
+#So all the participants flagged as multiple CNVs are n < 5 so they can go into the other group
+
+d_genotypes |>
+  
+  #Lets add a count of all the participants in each group
+  add_count(genotype_code) |>
+  
+  #We make a new variable and record when n < 5
+  mutate(new_code = case_when(n < 5 ~ "Other (non-priority)",
+                              genotype_code == 21 ~ "Other (non-priority)",
+                              TRUE ~ cnv)) |>
+  group_by(new_code) |>
+  count() |>
+  arrange(-n) |>
+  knitr::kable(col.names = c("Genetic Condition","N"),format = "html", booktabs = TRUE) |>
+  kableExtra::kable_styling(font_size = 11)
+  
+
+#And lets make a big list of all the genotypes subsumed into that "other"
+#group
+
+d_g_other = 
+  d_genotypes |>
+  
+  #Lets add a count of all the participants in each group
+  add_count(genotype_code) |>
+  
+  #We make a new variable and record when n < 5
+  mutate(new_code = case_when(n < 5 ~ "Other (non-priority)",
+                              genotype_code == 21 ~ "Other (non-priority)",
+                              TRUE ~ cnv)) |>
+  group_by(new_code) |>
+  filter(new_code == "Other (non-priority)") |>
+  ungroup() |>
+  distinct(genotype_as_far_as_we_know)
+
+#How many deletions/duplications/mixtures/others?
+
+d_g_other |> 
+  mutate(type = case_when(
+    str_detect(genotype_as_far_as_we_know,"deletion") & str_detect(genotype_as_far_as_we_know,"duplication") ~ "mixed",
+    str_detect(genotype_as_far_as_we_know,"deletion") ~ "del",
+    str_detect(genotype_as_far_as_we_know,"duplication") ~ "dup",
+
+    TRUE ~ "other")
+  ) |>
+  count(type)
+         
+#Print all the free text
+d_g_other|>
+  pull(genotype_as_far_as_we_know) |>
+  paste(sep = "; ",collapse = "; ")
+  
+
+
+
 # Participant Demographics =====
 
 
@@ -290,6 +402,64 @@ d_table |>
   bold_labels() %>%
   add_p()
 
+
+
+# Carrier/control family pairs =====
+
+#We need to work out how many participants with a CNV also have a sibling included in the study versus who does not
+Education |>
+  select(-Highest) |>
+  group_by(Family) |>
+  tally() |>
+  arrange(-n) |>
+  ggplot(aes(n)) +
+  geom_histogram(binwidth = 1)
+
+#What proportion of CNV carriers have a sibling included?
+Education |>
+  select(-Highest) |>
+  left_join(Education |>
+              select(-Highest) |>
+              group_by(Family) |>
+              tally(),
+            by = "Family") |>
+  filter(group == "ND-CNV") %>%
+  group_by(n) %>%
+  summarise(f_count = n(),
+            f_prop = (n()/nrow(.)) |> round(digits = 2))
+
+#What about the other way around?
+Education |>
+  select(-Highest) |>
+  left_join(Education |>
+              select(-Highest) |>
+              group_by(Family) |>
+              tally(),
+            by = "Family") |>
+  filter(group == "Control") %>%
+  group_by(n) %>%
+  summarise(f_count = n(),
+            f_prop = (n()/nrow(.)) |> round(digits = 2))
+
+
+# Study dates =====
+
+#We can get the dates that the questionairres were completed
+
+q_dates <- read_excel("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/MASTERDATABASE_BE_09_11_18.xlsx", 
+                  sheet = "IDs")
+
+q_dates = 
+  D2 |> 
+  select(IDs,group,CNV,Gender) |>
+  left_join(q_dates |>
+              select(IDs,CAPAinterviewdateW1), 
+            by = "IDs")
+
+#Get the earliest and latest dates-
+q_dates |> 
+  summarise(min_date = min(CAPAinterviewdateW1),
+            max_date = max(CAPAinterviewdateW1))
 
 # Figure 1 In R ======
 
