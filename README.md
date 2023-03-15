@@ -1,6 +1,6 @@
 # ND-CNV Machine Learning
 
-This project contains the code used in the ND-CNV machine learning paper (preprint link here)
+This project contains the code used in the ND-CNV machine learning paper [preprint](https://www.medrxiv.org/content/10.1101/2022.12.16.22283581v1)
 
 The data used in the study is available via the [IMAGINE ID study](https://imagine-id.org/healthcare-professionals/)
 
