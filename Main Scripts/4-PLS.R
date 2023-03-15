@@ -10,12 +10,23 @@ pacman::p_load(tidyverse,tidymodels,patchwork, mixOmics)
 tidymodels_prefer()
 
 
-#Load the imputed data - note that this dataset is actually created in script 3-ML.R, which is a bit backwards, 
-#however for consistency I am keeping the data generation in only one place 
-d_last_fit = read_rds("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/nested_cv_imputed_data.rds")
+#Set our data directory
+if(str_detect(Sys.info()[['nodename']],'IT088825')){
+  data_dir = 'C://Users/pyxnd/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data'
+  
+}else if(str_detect(Sys.info()[['nodename']],'AVOCADO')){
+  
+  data_dir = "C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/"
+}
+
+setwd(data_dir)
 
 
-#Select only the analysis dataset
+#Load the imputed data - note that this dataset is created in script 3-Data-Split.R
+d_last_fit = read_rds("nested_cv_imputed_data.rds")
+
+
+#Select only the training dataset
 d = d_last_fit |>  analysis()
 
 #Clean up
@@ -71,7 +82,9 @@ plotIndiv(cnv.splsda , comp = 1:2,
 
 
 # use the max.dist measure to form decision boundaries between classes based on PLS-DA data
-background = background.predict(cnv.splsda, comp.predicted=2, dist = "max.dist")
+background = background.predict(cnv.splsda, 
+                                comp.predicted=2, 
+                                dist = "max.dist")
 
 # plot the samples projected onto the first two components of the PLS-DA subspace
 plotIndiv(cnv.splsda, comp = 1:2,
@@ -80,7 +93,7 @@ plotIndiv(cnv.splsda, comp = 1:2,
           legend = TRUE, title = " (b) PLSDA with prediction background")
 
 
-#So this is not doing a perfect job of classification, we need to tune our PLSDA model
+#So this is doing an imperfect job of classification, we need to tune our PLSDA model
 
 
 # Tune our (s)PLS-DA =====
@@ -90,19 +103,25 @@ plotIndiv(cnv.splsda, comp = 1:2,
 #Select the right number of components by a cross-validation approach
 
 # undergo performance evaluation in order to tune the number of components to use
-perf.splsda.cnv <- perf(cnv.splsda, validation = "Mfold", 
-                          folds = 5, nrepeat = 50, # use repeated cross-validation
-                          progressBar = TRUE, auc = TRUE, cpus = 4) # include AUC values
+perf.splsda.cnv <- perf(cnv.splsda, 
+                        validation = "Mfold", 
+                        folds = 5, 
+                        nrepeat = 50,        # use repeated cross-validation
+                        progressBar = TRUE, 
+                        auc = TRUE,          # include AUC values
+                        cpus = 16) 
 
 # plot the outcome of performance evaluation across all ten components
-plot(perf.splsda.cnv, col = color.mixo(5:7), sd = TRUE,
+plot(perf.splsda.cnv, 
+     col = color.mixo(5:7),
+     sd = TRUE,
      legend.position = "horizontal")
 
 
 # print the optimal value of components according to perf()
 perf.splsda.cnv$choice.ncomp
 
-#Either 2 or 3 depending on the measure used
+#Either 2 or ??8 depending on the measure used
 
 
 ## Select the number of variables per component =====
@@ -110,31 +129,39 @@ perf.splsda.cnv$choice.ncomp
 #Next we can determine the number of variables used to construct each latent component
 #This is iterative and you need to use a cross-validation approach
 
-
 # grid of possible keepX values that will be tested for each component
-list.keepX <- c(1:10,  seq(20, 300, 10))
+list.keepX <- c(1:10,  seq(20, 200, 10))
 
 
 # undergo the tuning process to determine the optimal number of variables
-tune.splsda.cnv <- tune.splsda(X, Y, ncomp = 3, # calculate for first 3 components
-                                 validation = 'Mfold',
-                                 folds = 5, nrepeat = 50, # use repeated cross-validation
-                                 dist = 'max.dist', # use max.dist measure
-                                 measure = "BER", # use balanced error rate of dist measure
-                                 test.keepX = list.keepX,
-                                 cpus = 10) # allow for paralleliation to decrease runtime
+tune.splsda.cnv <- tune.splsda(X, Y, 
+                               ncomp = 4,         # calculate for first 4 components given the result of perf
+                               validation = 'Mfold',
+                               folds = 5, 
+                               nrepeat = 50,      # use repeated cross-validation
+                               dist = 'max.dist', # use max.dist measure
+                               measure = "BER",   # use balanced error rate of dist measure
+                               test.keepX = list.keepX,
+                               cpus = 16)         # allow for paralleliation to decrease runtime
 
 # plot output of variable number tuning
-plot(tune.splsda.cnv, col = color.jet(3)) 
+plot(tune.splsda.cnv, col = color.jet(4)) 
 
-# what is the optimal value of components according to tune.splsda()?
+
+# what is the optimal number of components according to tune.splsda()?
 tune.splsda.cnv$choice.ncomp$ncomp 
 
-# what are the optimal values of variables according to tune.splsda()
+#One, apparently? We need two for plotting at the very least
+
+
+# what are the optimal number of variables per component according to tune.splsda()
 tune.splsda.cnv$choice.keepX
 
+#50 for comp 1, 40 for comp 2
+
 #Store these
-optimal.ncomp <- tune.splsda.cnv$choice.ncomp$ncomp
+# optimal.ncomp <- tune.splsda.cnv$choice.ncomp$ncomp
+optimal.ncomp <- 2
 optimal.keepX <- tune.splsda.cnv$choice.keepX[1:optimal.ncomp]
 
 
@@ -148,6 +175,8 @@ final.splsda <- splsda(X, Y,
                        keepX = optimal.keepX)
 
 
+#Variance explained
+final.splsda$prop_expl_var
 
 ## Plot Final model =====
 
@@ -158,17 +187,7 @@ final.splsda <- splsda(X, Y,
 plotIndiv(final.splsda, comp = c(1,2), # plot samples from final model
           group = Y, ind.names = FALSE, # colour by class label
           ellipse = TRUE, legend = TRUE, # include 95% confidence ellipse
-          title = ' (a) sPLS-DA on SRBCT, comp 1 & 2')
-
-plotIndiv(final.splsda, comp = c(1,3), # plot samples from final model
-          group = Y, ind.names = FALSE,  # colour by class label
-          ellipse = TRUE, legend = TRUE, # include 95% confidence ellipse
-          title = '(b) sPLS-DA on SRBCT, comp 1 & 3')
-
-plotIndiv(final.splsda, comp = c(2,3), # plot samples from final model
-          group = Y, ind.names = FALSE,  # colour by class label
-          ellipse = TRUE, legend = TRUE, # include 95% confidence ellipse
-          title = '(b) sPLS-DA on SRBCT, comp 2 & 3')
+          title = ' (a) sPLS-DA on ND-GC Dataset, comp 1 & 2')
 
 
 
@@ -182,8 +201,8 @@ perf.splsda.cnv <- perf(final.splsda,
                         progressBar = TRUE)
 
 
-# plot the stability of each feature for the first three components, 'h' type refers to histogram
-par(mfrow=c(1,3))
+# plot the stability of each feature for the first two components, 'h' type refers to histogram
+par(mfrow=c(1,2))
 plot(perf.splsda.cnv$features$stable[[1]], type = 'h', 
      ylab = 'Stability', 
      xlab = 'Features', 
@@ -192,10 +211,8 @@ plot(perf.splsda.cnv$features$stable[[2]], type = 'h',
      ylab = 'Stability', 
      xlab = 'Features', 
      main = '(b) Comp 2', las =2)
-plot(perf.splsda.cnv$features$stable[[3]], type = 'h', 
-     ylab = 'Stability', 
-     xlab = 'Features',
-     main = '(c) Comp 3', las =2)
+
+#Component 2 has rather less stability than 1
 
 
 # Correlation circle plot
@@ -205,14 +222,16 @@ plotVar(final.splsda, comp = c(1,2), cex = 3) # generate correlation circle plot
 # Correlation circle plot representing the variables selected by sPLS-DA performed on the 
 #CNV data. Only the variables selected by sPLS-DA are shown in components 1 and 2.
 
+#We can see some clustering of variables with similar loadings within questionnaires - the CMD
+#variables are in similar locations, as are the SCQ and pra variables for example
 
 
 
 
-# Make Figure 2 ======
+# Make Supplementary Figure 1 ======
 
-# Now we make figure 2 - we will plot the PCA results to illustrate that once component appears to explain
-#a particularly large proportion of variation in our variable set, and we also plot the first 3 PLS components
+# Now we make supplementary figure 1 - we will plot the PCA results to illustrate that one component appears to explain
+#a particularly large proportion of variation in our dataset, and we also plot the first 3 PLS components
 #from our final tuned PLSDA model
 
 #Plot the PCA components
@@ -233,29 +252,25 @@ p_pca =
         axis.text.x = element_text(angle = -45)) +
   labs(x = "PCA Component")
 
+#Note the %explaiend variance for the components
+pca.cnv$prop_expl_var$X
 
 #Plot the sPLS-DA
 
 
 #Plot component 1 vs 2
-p_pls1 = plotIndiv(final.splsda, comp = c(1,2), # plot samples from final model
-                   group = Y, ind.names = FALSE, # colour by class label
-                   ellipse = TRUE, legend = FALSE, # include 95% confidence ellipse
-                   col = c("#E1AF64","#32324B"),
-                   pch = c(20,20),alpha = 0.3,
-                   size.xlabel = 8,size.ylabel = 8, size.axis = 6,
-                   point.lwd = 0.2,
-                   title = ' (a) sPLS-DA on CNV, comp 1 & 2')
+p_pls1 = 
+  plotIndiv(final.splsda, comp = c(1,2), # plot samples from final model
+            group = Y, ind.names = FALSE, # colour by class label
+            ellipse = TRUE, legend = FALSE, # include 95% confidence ellipse
+            col = c("#E1AF64","#32324B"),
+            pch = c(20,20),
+            alpha = 0.3,
+            size.xlabel = 8,size.ylabel = 8, size.axis = 6,
+            point.lwd = 0.2,
+            title = ' (a) sPLS-DA on CNV, comp 1 & 2')
 
-#Plot component 1 vs 3
-p_pls2 = plotIndiv(final.splsda, comp = c(1,3), # plot samples from final model
-                   group = Y, ind.names = FALSE, # colour by class label
-                   ellipse = TRUE, legend = TRUE, # include 95% confidence ellipse
-                   col = c("#E1AF64","#32324B"),
-                   pch = c(20,20),alpha = 0.3,
-                   size.xlabel = 8,size.ylabel = 8, size.axis = 6,
-                   point.lwd = 0.2,
-                   title = '(b) sPLS-DA on CNV, comp 1 & 3')
+
 
 #Modify the plots using ggplot
 p_pls1 = 
@@ -269,23 +284,14 @@ p_pls1 =
         strip.text = element_blank()) +
   labs(x = "PLSDA Component 1", y = "PLSDA Component 2")
         
-p_pls2 = 
-  p_pls2$graph + 
-  theme_bw() + 
-  theme(panel.grid = element_blank(),
-        legend.position = "right",
-        axis.text = element_text(size = 8),
-        axis.title = element_text(size = 10),
-        strip.background = element_blank(),
-        strip.text = element_blank()) +
-  labs(x = "PLSDA Component 1", y = "PLSDA Component 3")
 
 #Form the figure using patchwork
-figure_2 = p_pca + p_pls1 + p_pls2 + plot_annotation(tag_levels = "A")
+sf_1 = p_pca + p_pls1 +  plot_annotation(tag_levels = "A")
 
 
 #Save the figure
-ggsave(filename = "C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Figures/Figure Parts/figure_2.pdf",
-       height = 3,width = 8,
-       plot = figure_2)
+ggsave(filename = "C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Figures/Figure Parts/sf_1.pdf",
+       height = 3,
+       width  = 6,
+       plot = sf_1)
 

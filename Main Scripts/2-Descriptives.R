@@ -12,90 +12,32 @@ pacman::p_load(tidyverse,tidymodels,readxl,gtsummary,lubridate)
 `%nin%` = Negate(`%in%`)
 
 
-#Load the full dataset
-DF = read_csv("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/CleanedData.csv")
+#Set our data directory
+if(str_detect(Sys.info()[['nodename']],'IT088825')){
+  data_dir = 'C://Users/pyxnd/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data'
+  
+}else if(str_detect(Sys.info()[['nodename']],'AVOCADO')){
+  
+  data_dir = "C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/"
+}
 
-#Make the class labels
-D = 
-  DF |>
-  mutate(group = map_chr(GenotypeCode,~ifelse(.x == 16,"Control","ND-CNV"))) |>
-  mutate(group = factor(group, levels = c("Control","ND-CNV"))) |>
-  relocate(group)
+setwd(data_dir)
+
+
+
+#Load the full dataset
+DF = read_csv("CleanedData.csv")
 
 
 # Participant Genotype Details ======
 
+#Load the latest genotype information from Sam Chawner
 
-#Load the meaning of each genotype code
-Gens <- read_excel("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/MASTER PARTICIPANT LIST.xlsx", sheet = 3)
+mpl  <- read_excel("ParticipantGenotypes.xlsx", sheet = 1)
+gens <- read_excel("ParticipantGenotypes.xlsx", sheet = 2)
 
-# Load the genotype for each participant
-MPL <- read_excel("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/MASTER PARTICIPANT LIST.xlsx", sheet = 1)
-
-
-#Join the data and the genotype data together
-D2 <-
-  D |>
-  left_join(Gens |> rename(GenotypeCode = Code),
-            by = "GenotypeCode") |>
-  relocate(IDs,group,GenotypeCode,CNV)
-  
-
-table_genotype_detail = 
-  D2 |> 
-  select(IDs, CNV) |>
-  left_join(  MPL |>
-                select(`Primary ID`, `Genotype as far as we know`,`Recruitment CNV`) |>
-                rename(IDs = `Primary ID`),
-              by = "IDs") |>
-  mutate(CNV_detail = case_when(
-    CNV == "More than 1 priority CNV" ~ `Genotype as far as we know`,
-    CNV == "Other (non-priority)"     ~ `Genotype as far as we know`,
-    TRUE ~ CNV
-  )) |>
-  mutate(CNV_detail = case_when(
-    is.na(CNV_detail) ~ `Recruitment CNV`,
-    TRUE ~ CNV_detail
-  )) |>
-  count(CNV_detail)|>
-  arrange(-n) 
-
-
-#Tabulate in the viewer
-table_genotype_detail |>
-  knitr::kable(col.names = c("ND-CNV","N"),format = "html", booktabs = TRUE) |>
-  kableExtra::kable_styling(font_size = 11)
-
-
-#Save for posterity
-write_csv(table_genotype_detail, "C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/FinalIncludedGenotypes.csv")
-
-
-#Lets use the new spreadsheet from Sam Chawner
-
-mpl  <- read_excel("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/ParticipantGenotypes.xlsx", sheet = 1)
-gens <- read_excel("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/ParticipantGenotypes.xlsx", sheet = 2)
-
-#First of all, lets confirm that all the controls are the same genotype in both spreadsheets - 
-DF |>
-  select(IDs,GenotypeCode)  |>
-  janitor::clean_names() |>
-  rename(id = i_ds) |>
-  left_join(mpl |> 
-              select(`Primary ID`,`Genotype as far as we know`, `Genotype code`) |>
-              janitor::clean_names() |>
-              rename(id = primary_id),
-            by = "id")|>
-  relocate(id,genotype_as_far_as_we_know, genotype_code.x,genotype_code.y) |>
-  filter(str_detect(genotype_as_far_as_we_know,"Control")) |>
-  print(n = 500)
-
-#Yes they are!
-
-#Now lets inspect our counts of genotypes
-gens |> print(n = 30)
-
-d_ids = DF |>
+d_ids = 
+  DF |>
   select(IDs)  |>
   rename(id = IDs) |>
   pull(id)
@@ -119,7 +61,6 @@ d_genotypes =
 #We need to decide what to do with the "more than 1 cnv" group (code 21)
 
 #First lets look into group 21
-
 d_genotypes |>
   filter(genotype_code == 21) |>
   group_by(genotype_as_far_as_we_know) |>
@@ -128,22 +69,28 @@ d_genotypes |>
 
 #So all the participants flagged as multiple CNVs are n < 5 so they can go into the other group
 
+
+## Table 2: Genotypes ======
+
+#Now we make the Table - currently Table 2
 d_genotypes |>
   
   #Lets add a count of all the participants in each group
   add_count(genotype_code) |>
-  
+
   #We make a new variable and record when n < 5
   mutate(new_code = case_when(n < 5 ~ "Other (non-priority)",
                               genotype_code == 21 ~ "Other (non-priority)",
                               TRUE ~ cnv)) |>
   group_by(new_code) |>
   count() |>
+  mutate(new_code = case_when(new_code == "Other (non-priority)" ~ "Other",
+                              TRUE ~ new_code)) |>
   arrange(-n) |>
-  knitr::kable(col.names = c("Genetic Condition","N"),format = "html", booktabs = TRUE) |>
+  knitr::kable(col.names = c("Genomic Condition","N"),format = "html", booktabs = TRUE) |>
   kableExtra::kable_styling(font_size = 11)
-  
 
+  
 #And lets make a big list of all the genotypes subsumed into that "other"
 #group
 
@@ -162,8 +109,7 @@ d_g_other =
   ungroup() |>
   distinct(genotype_as_far_as_we_know)
 
-#How many deletions/duplications/mixtures/others?
-
+#How many deletions/duplication/mixtures/others?
 d_g_other |> 
   mutate(type = case_when(
     str_detect(genotype_as_far_as_we_know,"deletion") & str_detect(genotype_as_far_as_we_know,"duplication") ~ "mixed",
@@ -179,7 +125,22 @@ d_g_other|>
   pull(genotype_as_far_as_we_know) |>
   paste(sep = "; ",collapse = "; ")
   
+#We then put a sorted form of this into the Table 2 caption
 
+
+#Including the others and the non-controls, how many genotypes do we have?
+d_g_other |> 
+  mutate(type = case_when(
+    str_detect(genotype_as_far_as_we_know,"deletion") & str_detect(genotype_as_far_as_we_know,"duplication") ~ "mixed",
+    str_detect(genotype_as_far_as_we_know,"deletion") ~ "del",
+    str_detect(genotype_as_far_as_we_know,"duplication") ~ "dup",
+    
+    TRUE ~ "other")
+  ) |>
+  count(type) |>
+  summarise(sumn = sum(n) + 14)
+
+#We add 14 as there are 14 non contorl, non-other genotypes in our table above
 
 
 # Participant Demographics =====
@@ -187,10 +148,12 @@ d_g_other|>
 
 ## read info from our database xlsx files
 DBIDs <-
-  read_xlsx("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/MASTERDATABASE_BE_09_11_18.xlsx", sheet = "IDs")
+  read_xlsx("MASTERDATABASE_BE_09_11_18.xlsx", 
+            sheet = "IDs")
 
 Fam <- 
-  read_xlsx("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/MASTERDATABASE_BE_09_11_18.xlsx", sheet = "EPQ01-6 FamEnvHealth QA")
+  read_xlsx("MASTERDATABASE_BE_09_11_18.xlsx", 
+            sheet = "EPQ01-6 FamEnvHealth QA")
 
 
 
@@ -205,42 +168,49 @@ DBIDs <-
          Age = interval(DOB,CAPAinterviewdateW1) |> 
            as.period() |>
            as.numeric("years"),
-         Gender = as.numeric(Gender)) 
+         Gender = as.numeric(Gender)) |>
+  janitor::clean_names() |>
+  rename(id = i_ds,
+         capa_interviewdate_w1 = cap_ainterviewdate_w1) |>
+  select(-dob)
 
 
 d_demographic = 
-  D2 |> 
-  select(IDs,group,GenotypeCode,CNV,Gender) |>
-  left_join(DBIDs, by = c("IDs","Gender")) |>
-  mutate(Gender = case_when(
-    Gender == 1 ~ "Male",
-    Gender == 2 ~ "Female"
-  ))
+  d_genotypes  |> 
+  select(id,genotype_code) |>
+  mutate(group = if_else(genotype_code == 16,"control","ND-GC")) |>
 
-# table(d_demographic$group,d_demographic$Gender)
+  left_join(DBIDs, by = c("id")) |>
+  mutate(gender = case_when(
+    gender == 1 ~ "Male",
+    gender == 2 ~ "Female"
+  )) |>
+  select(-capa_interviewdate_w1)
+
+# table(d_demographic$group,d_demographic$gender)
+
 
 
 ## Educational level ====
-
 
 #Now we work out educational levels, income and ethnic background
 
 d_family =
   d_demographic |> 
-  select(-c(DOB,CAPAinterviewdateW1)) |>
   left_join(Fam |> select(IDs,
                           P_Edu_1a, P_Edu_1b, P_Edu_1c, P_Edu_1d, P_Edu_1e,
                           P_Edu_2,
-                          P_Fam_Back_1), 
-            by = "IDs") |>
-  mutate(Family = map_chr(IDs,~str_split(.x,pattern = "-",n = 4,simplify = TRUE) %>% .[1])) |>
+                          P_Fam_Back_1) |>
+              rename(id = IDs), 
+            by = "id") |>
+  mutate(Family = map_chr(id,~str_split(.x,pattern = "-",n = 4,simplify = TRUE) %>% .[1])) |>
   relocate(Family,.before = group)
 
 
 #This is all wrangling stuff
 Education <- 
   d_family |>
-  select(IDs,Family,group,P_Edu_1a, P_Edu_1b, P_Edu_1c, P_Edu_1d, P_Edu_1e) |>
+  select(id,Family,group,P_Edu_1a, P_Edu_1b, P_Edu_1c, P_Edu_1d, P_Edu_1e) |>
   
   #We want to know if all the variables are NA
 
@@ -264,25 +234,32 @@ Education <-
 
 
 
-
 #So we address controls often have missing info by duplicating across from the affected siblings
 Education = 
-  d_family |>
-  select(IDs,Family,group) |>
-  left_join(Education |>
-              select(Family, Highest) |>
-              mutate(DupFam = ifelse(duplicated(Family), 1, 0)) |>
-              filter(DupFam==0),
-              by = c("Family")) |>
-  select(-DupFam)
+  Education |>
+  select(id,Family,group,Highest) |>
+  group_by(Family) |>
+  nest() |>
+  mutate(highest_new = map_chr(data,~if_else(dim(.x)[1] > 1,
+                                             .x$Highest[!str_detect(.x$Highest,'Unknown')][1],
+                                             .x$Highest[[1]]))) |>
+  unnest(data) |>
+  select(-Highest) |>
+  rename(Highest = highest_new) |> 
+  ungroup() |>
+  mutate(Highest = case_when(is.na(Highest) ~ "Unknown",
+                              TRUE ~ Highest )) |>
+  mutate(Highest = factor(Highest,levels = c("No School Leaving Exams","Low","Middle","High","Unknown")))
 
 table(Education$group, Education$Highest)
+
+
 
 ## Income =====
 
 Income <- 
   d_family |>
-  select(IDs,Family,group,P_Edu_2) |>
+  select(id,Family,group,P_Edu_2) |>
   rename(Income = P_Edu_2) |>
   mutate(Income = case_when(
     Income == "1"| Income == "2" | Income == "8" ~ "<=£19,999",
@@ -295,14 +272,25 @@ Income <-
 #Values not covered by the case_when conditions are replaced with NAs
 
 Income = 
-  d_family |>
-  select(IDs,Family,group) |>
-  left_join(Income |>
-              select(Family, Income) |>
-              mutate(DupFam = ifelse(duplicated(Family), 1, 0)) |>
-              filter(DupFam==0),
-            by = c("Family")) |>
-  select(-DupFam)
+  Income |>
+  arrange(Family) |>
+  select(id,Family,group,Income) |>
+  group_by(Family) |>
+  nest() |>
+  mutate(highest_new = map_chr(data,~if_else(dim(.x)[1] > 1,
+                                             .x$Income[!str_detect(.x$Income,'Unknown')][1],
+                                             .x$Income[[1]]))) |>
+  unnest(data) |>
+  select(-Income) |>
+  rename(Income = highest_new) |>
+  
+  ungroup() |>
+  mutate(Income = case_when(is.na(Income) ~ "Unknown",
+                             TRUE ~ Income )) |>
+  
+  #Set factor levels for our possible ethnicity categories
+  mutate(Income = factor(Income, levels = c("<=£19,999", "£20,000 - £39,999","£40,000 - £59,999","£60,000 + ", "Unknown")))
+
 
 table(Income$group, Income$Income)
 
@@ -311,7 +299,7 @@ table(Income$group, Income$Income)
 
 Background<-
   d_family |>
-  select(IDs,Family,group,P_Fam_Back_1) |>
+  select(id,Family,group,P_Fam_Back_1) |>
   rename(Ethnicity = P_Fam_Back_1) |>
   mutate(Ethnicity = case_when(
     (Ethnicity == "1" | Ethnicity == "2")  ~ "European",
@@ -338,69 +326,82 @@ Background<-
     Family=="IM228" ~ "European",
     Family=="IM243" ~ "European",
     TRUE ~ Ethnicity
-  )) |>
+  )) 
+
+
+
+Background = 
+  Background |>
+  arrange(Family) |>
+  select(id,Family,group,Ethnicity) |>
+  group_by(Family) |>
+  nest() |>
+  mutate(highest_new = map_chr(data,~if_else(dim(.x)[1] > 1,
+                                             .x$Ethnicity[!str_detect(.x$Ethnicity,'Unknown')][1],
+                                             .x$Ethnicity[[1]]))) |>
+  unnest(data) |>
+  select(-Ethnicity) |>
+  rename(Ethnicity = highest_new) |>
+  ungroup() |>
+  mutate(Ethnicity = case_when(is.na(Ethnicity) ~ "Unknown",
+                             TRUE ~ Ethnicity )) |>
   
   #Set factor levels for our possible ethnicity categories
   mutate(Ethnicity = factor(Ethnicity, levels = c("European", "Other", "Unknown")))
 
 
-
-Background = 
-  d_family |>
-  select(IDs,Family,group) |>
-  left_join(Background |>
-              select(Family, Ethnicity) |>
-              mutate(DupFam = ifelse(duplicated(Family), 1, 0)) |>
-              filter(DupFam==0),
-            by = c("Family")) |>
-  select(-DupFam)
-
 table(Background$group, Background$Ethnicity)
-
 
 
 # Combine datasets and tabulate =====
 
 
-
 #Mash together our datasets
 d_table = 
+  
   d_demographic |> 
   
   #Grab our basic demograhpic details
-  select(IDs,group,Age,Gender) |>
+  select(id,group,age,gender) |>
   
   #Glue on educational detail
   left_join(
     Education |>
-      select(IDs,  Highest),
-    by = "IDs") |>
+      select(id,  Highest) ,
+    by = "id") |>
   
   #Glue on family income
-  left_join(Income |>
-              select(IDs, Income),
-            by = "IDs") |>
+  left_join(Income|>
+              select(id, Income),
+            by = "id") |>
   
   # Glue on ethnicity data
-  left_join(Background |>
-              select(IDs, Ethnicity),
-            by = "IDs")
+  left_join(Background|>
+              select(id, Ethnicity),
+            by = "id") |>
+  arrange(id)
 
 
 
 # Make a nice summary table ====
 
 d_table |>
-  mutate(Highest = factor(Highest, levels = c("No School Leaving Exams","Low","Middle","High","Unknown") ),
-         Income  = factor(Income , levels = c("<=£19,999","£20,000 - £39,999","£40,000 - £59,999","£60,000 + ","Unknown"))) |>
-  rename(`Highest Educational Level` = Highest,Group = group) |>
-  select(-IDs) |>
+  rename(`Highest Educational Level` = Highest,
+         Group = group,Gender = gender,Age = age) |>
+  select(-id) |>
   tbl_summary(by = c(Group)) %>%
   add_overall() %>%
   modify_header(label = "**Variable**") %>%
   modify_spanning_header(c("stat_1", "stat_2") ~ "**Group**") %>%
-  bold_labels() %>%
-  add_p()
+  bold_labels()
+
+#We are not going to do stats tests as there is literature suggesting this isnt a good idea
+#%>%  add_p()
+
+
+# Save ======
+
+write_csv(d_table, "DemographicTable.csv")
 
 
 
@@ -423,7 +424,7 @@ Education |>
               group_by(Family) |>
               tally(),
             by = "Family") |>
-  filter(group == "ND-CNV") %>%
+  filter(group == "ND-GC") %>%
   group_by(n) %>%
   summarise(f_count = n(),
             f_prop = (n()/nrow(.)) |> round(digits = 2))
@@ -436,7 +437,7 @@ Education |>
               group_by(Family) |>
               tally(),
             by = "Family") |>
-  filter(group == "Control") %>%
+  filter(group == "control") %>%
   group_by(n) %>%
   summarise(f_count = n(),
             f_prop = (n()/nrow(.)) |> round(digits = 2))
@@ -444,31 +445,35 @@ Education |>
 
 # Study dates =====
 
-#We can get the dates that the questionairres were completed
+#We can get the dates that the questionnaires were completed
 
-q_dates <- read_excel("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/MASTERDATABASE_BE_09_11_18.xlsx", 
+q_dates <- read_excel("MASTERDATABASE_BE_09_11_18.xlsx", 
                   sheet = "IDs")
 
 q_dates = 
-  D2 |> 
-  select(IDs,group,CNV,Gender) |>
+  d_table |> 
+  select(id,group,gender) |>
   left_join(q_dates |>
-              select(IDs,CAPAinterviewdateW1), 
-            by = "IDs")
+              select(IDs,CAPAinterviewdateW1) |>
+              rename(id = IDs), 
+            by = "id")
 
 #Get the earliest and latest dates-
 q_dates |> 
   summarise(min_date = min(CAPAinterviewdateW1),
             max_date = max(CAPAinterviewdateW1))
 
+
+
+
+
+
 # Figure 1 In R ======
 
 
-# Make figure 1 as a R plot?
-
+# Make figure 1 as a R plot
 pacman::p_load(DiagrammeR,DiagrammeRsvg,xml2)
 
-#Try our own
 my_graph = 
 grViz("
 digraph cnv_classication_flow {
@@ -502,16 +507,17 @@ digraph cnv_classication_flow {
   }
   
   node [fixedsize = true, width = 3, height = 1]
-  a[label = 'Starting Dataset: 589 participants, \\n 1450 variables']   
-  b[label = 'Remove administrative, free text, \\n data and time variables, \\n leaving 478 variables']   
-  c[label = 'Remove variables where > 95% \\n of responses are identifcal, \\n leaving 271 variables']   
-  d[label = 'Remove variables and participants \\n with > 25% missing data \\n leaving 489 participants and \\n 233 variables']
+  a[label = 'Starting Dataset: 589 participants, \\n 1451 variables']   
+  b[label = 'Remove administrative, free text, \\n data and time variables, \\n leaving 474 variables']   
+  c[label = 'Remove variables where > 90% \\n of responses are identifcal, \\n leaving 211 variables']   
+  d[label = 'Remove variables and participants \\n with > 25% missing data \\n leaving 493 participants and \\n 192 variables']
+  e[label = 'Remove variables with > 0.80 \\n correlation with other variables \\n leaving 493 participants and \\n 176 variables']
 
-  a -> b -> c -> d
+  a -> b -> c -> d -> e
 
 
-  d -> '@@3'       [lhead = cluster0]
-  d -> '@@1'       [lhead = cluster1]
+  e -> '@@3'       [lhead = cluster0]
+  e -> '@@1'       [lhead = cluster1]
   
   '@@7' -> '@@2'
   
@@ -522,9 +528,9 @@ digraph cnv_classication_flow {
 
 }
 
-[1]: 'Test Data: 99 participants'
+[1]: 'Test Data: 100 participants'
 [2]: 'Evaluation of best model  \\n performance on test data'
-[3]: 'Training Data: 390 participants'
+[3]: 'Training Data: 393 participants'
 [4]: 'Nested CV with all variables: \\n  imputation, ML model fitting \\n and performance evaluation'
 [5]: 'Select top 30 variables for each \\n model plus variables \\n selected by multiple models'
 [6]: 'Nested CV with variable subsets'

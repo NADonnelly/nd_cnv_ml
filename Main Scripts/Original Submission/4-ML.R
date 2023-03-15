@@ -45,6 +45,11 @@ DF0 =
 #Have as quick look at all variables
 # skimr::skim(DF0)
 
+# DF0 |>
+#   select(-c(IDs)) |>
+#   summarytools::dfSummary() |>
+#   summarytools::view()
+
 
 # Lets force our ordinal variables to be integers (necessary for imputation)
 

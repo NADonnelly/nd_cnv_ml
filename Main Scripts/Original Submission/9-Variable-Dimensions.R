@@ -16,147 +16,171 @@ library(EFAtools)
 tidymodels_prefer()
 
 
+
+#Set our data directory
+if(str_detect(Sys.info()[['nodename']],'IT088825')){
+  data_dir = 'C://Users/pyxnd/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data'
+  
+}else if(str_detect(Sys.info()[['nodename']],'AVOCADO')){
+  
+  data_dir = "C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/"
+}
+
+setwd(data_dir)
+
+
+
 #Load the imputed dataset
-d_last_fit = read_rds("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/nested_cv_imputed_data.rds")
+d_last_fit = read_rds("nested_cv_imputed_data.rds")
 
 
-## Prepare variable defintions =====
+
+## Prepare variable definitions =====
+
 
 #Load our final variables
-d_var = read_rds("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/nested_cv_selected_var_definitions.rds")
-
-
-#We might benefit from make short names for each variable.
-
-#What do we got? We have 30 variables in total:
-
-#CAPA 
-# 1  pcb1i01         Anxious affect -  Fear of activities in public                                              = FPB                                                                      
-# 2  pcb3i01         Anxious affect -  Agoraphobia                                                               = AGO           
-# 3  pce0i01         Anxious affect -  Fear of blood/injections                                                  = FBI                          
-# 4  pcd2i01         Rumination, Obsessions and Compulsions - ?Rumination Intensity                              = RUM                       
-# 5  pda0i02         Depression  -   Episode of Depressed mood intensity                                         = DeI                                       
-# 6  pda0i03         Depression  -   Period of 2 continuous months without depressed mood in last year           = D2M                                                                         
-# 7  pda1i01         Depression  -   Distinct quality of depressed mood                                          = DeQ                                       
-# 8  pbe1i01         Physical symptoms on separation from caregiver (separation anxiety symptom)                 = SAP                                                                           
-# 9  pbe7i01         Separation Anxiety -  Intensity of separation worries/anxiety (across multiple activities)  = SAI                                                                       
-# 10 pbf8i01         Separation Anxiety -  Frequency of separation anxiety                                       = SAF                                
-# 11 pbf2i01         Separation Anxiety -  Avoidance of sleeping away from family                                = SAS                                       
-# 12 pfb7i01         Sleep probs -  Total Insomnia intensity                                                     = InT                         
-# 13 pfb7i02         Sleep probs -  Initial insomnia intensity                                                   = InI                            
-# 14 prc8i01         hyperactivity -  Forgetful in daily activities intensity                                    = FGT                                               
-# 15 prb8i01         Often blurts out answers to questions (ADHD Impulsivity/Hyperactivity symptom)              = BLT                                                                             
-# 16 pgc3i01         oppositional / conduct disorder  - Lying intensity                                          = LIE              
-# 17 pgc5i01         oppositional / conduct disorder  - Cheating intensity                                       = CHT                   
-
-#Your child's health and development 
-# 18 P_Health_dev_9  Health and Development - Is your child behind in reading                                    = REA                  
-# 19 P_Health_dev_11 Health and Development - educationally statemented                                          = EST                                  
-# 20 P_Health_dev_13 Health and Development - did your child walk by 18 months                                   = W18                            
-# 21 P_Health_dev_15 Health and Development - has your child had speech therapy                                  = SLT                        
-# 22 P_Health_dev_21 Health and Development - other problems with airways/lungs                                  = LUN               
-# 23 P_Health_dev_24 Health and Develpoment - heart problems                                                     = CAR                                     
-# 24 P_Health_dev_27 Health and Development - skeletal or muscular problems                                      = MSK                      
-
-#SCQ
-# 25 P_ASQ_7         ASQ Behav and social comm - invented words, odd indirect, metaphorical ways                 = AWM      
-# 26 P_ASQ_8         ASQ Behav and social comm - say the same thing over and over                                = ARP
-
-#DCDQ
-# 27 CMD_2           Coordination and motor development - catches a small ball thrown from 6-8ft                 = CBA      
-# 28 CMD_5           Coordination and motor development - runs as fast and easily as other children              = CRF 
-# 29 CMD_6           Coordination and motor development - can organise her body to do a planned motor activity   = COB
-# 30 CMD_10          Coordination and motor development - cuts pictures and shapes accurately                    = CCP   
- 
+d_var = read_rds("nested_cv_selected_var_definitions.rds")
 
 
 #We can try and get variable definitions from the spreadsheet found on the 
 #imagine-id website?
 
 #We can look these items up in the data dictionary....
-vd <- readxl::read_excel("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/DATA DICTIONARY.xlsx", 
+vd <- readxl::read_excel("DATA DICTIONARY.xlsx", 
                          sheet = "Sheet1")
 
-#We have made a nice sheet of these definitions
-vd2 <- readxl::read_excel("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/VariableDefinitions.xlsx", 
-                          sheet = "Sheet1")
+vl <- readxl::read_excel("DATA ENTRY CODEBOOK .xlsx", 
+                         sheet = "VARIABLE LIST")
 
+#Wrangle lightly
+vl = 
+  vl |>
+  janitor::clean_names() |>
+  select(-x4) |>
+  filter(variable %in% d_var$variable)
 
 vd = 
   vd |> 
-  select(`Question number`,`Question description`,Assessment,Section,`Question description (ME)`) |>
-  drop_na(`Question description`) |>
-  mutate(`Question number` = map_chr(`Question number`,str_remove,"_L")) |>
-  filter(`Question number` %in% d_var$VARIABLE) |>
-  rename(VARIABLE = `Question number`) |>
-  right_join(d_var,by = c("VARIABLE")) |>
-  mutate(var_def = if_else(is.na(`Question description (ME)`),`VARIABLE DEFINITION`,`Question description (ME)`)) |>
-  select(VARIABLE,Assessment,Section,var_def) 
+  janitor::clean_names() |>
+  select(question_number,question_description,assessment,section,question_description_me) |>
+  drop_na(question_description) |>
+  mutate(question_number = map_chr(question_number,str_remove,"_L")) |>
+  filter(question_number %in% d_var$variable) |>
+  rename(variable = question_number) |>
+  mutate(variable_definition_dict  = case_when(is.na(question_description_me) ~ question_description,
+                                           TRUE ~ question_description_me)) |>
+  select(variable,assessment,section,variable_definition_dict) 
+
+
+variable_table = 
+  left_join(vl,vd,by = "variable") |>
+  select(variable,data_type,assessment,section,variable_definition,variable_definition_dict) 
+
+
+
+#We might benefit from make short names for each variable.
+variable_table |>
+  print(n = 30)
+
+
+#What do we got? We have 30 variables in total. Note that these are somewhat different to the variables first identified
+#using the SVM model (which is not unexpected given they are rather different models)
+
+#CAPA 
+# 1  pcb2i01          Agoraphobia intensity                                                               = AGO
+# 2  pcc0i01          Situational anxious affect intensity                                                = SIT
+# 3  pbf4i01          Avoidance of being alone intensity                                                  = ALO
+# 4  pbf5i01          Anticipatory distress intensity                                                     = ANT
+# 5  pfb7i02          Sleep problems -  Initial insomnia intensity                                        = INI ***  
+# 6  prb8i01          Often blurts out answers to questions                                               = BLT ***
+# 7  pge2i01          Vandalism intensity                                                                 = VAN
+
+# Health & Development
+# 8  P_Preg_23        How much did your child weigh at birth?                                             = WGT
+# 9  P_Health_dev_6   Is your child clumsy?                                                               = CLM
+# 10 P_Health_dev_9   Is your child behind in reading                                                     = REA  ***
+# 11 P_Health_dev_11  Is your child educationally statemented                                             = EST  ***
+# 12 P_Health_dev_12  Was your child talking by the age of 2                                              = SP2
+# 13 P_Health_dev_15  Has your child had speech therapy                                                   = SLT ***
+# 14 P_Health_dev_20  Frequent infections of the chest/airways                                            = RTI
+
+# SDQ
+# 15 P_SDQ_1          Considerate of other's feelings                                                     = CNS
+# 16 P_SDQ_6          Rather solitary, tends to play alone                                                = SOL
+# 17 P_SDQ_9          Helpful if someone is hurt                                                          = HRT
+# 18 P_SDQ_16         Easily distracted, concentration wanders                                            = DIS
+# 19 P_SDQ_19         Often tells lies                                                                    = LIE
+# 20 P_SDQ_20         Often cheats                                                                        = CHT
+# 21 P_SDQ_29         Inconsiderate of others                                                             = INC
+
+#SCQ
+# 22 P_ASQ_14         Special interests unusual in their intensity                                        = SII
+# 23 P_ASQ_39         Imaginative play with another child                                                 = PIM
+# 24 P_ASQ_40         Play cooperatively                                                                  = PCO
+
+#DCDQ
+# 25 CMD_2            Catches a small ball thrown from 6-8ft                                              = CBA ***
+# 26 CMD_5            Runs as fast and easily as other children                                           = CRF ***
+# 27 CMD_6            Can organise her body to do a planned motor activity                                = COB ***
+# 28 CMD_11           Likes participating in games requiring good motor skills                            = CGM
+# 29 CMD_14           Child would never be described as a bull in a china shop (clumsy and breaks things) = CBL
+# 30 CMD_15           Child does not fatigue easily or appear to slouch and "fall out" of the chair       = CSL
+
+
 
 #Lets smush these together
-d_var = 
-  d_var |>
-  rename(variable  = VARIABLE,
-         data_type = `DATA TYPE`,
-         var_def   = `VARIABLE DEFINITION`) |>
-  left_join(vd |> 
-              select(VARIABLE, var_def,Assessment,Section) |> 
-              rename(variable = VARIABLE,var_def_long = var_def), 
-            by = c("variable")) |>
-  left_join(vd2 |> rename(variable = Code), by = c("variable")) |>
+variable_table = 
+  variable_table|>
   
   #This is my rather arbitrary variable naming
-  mutate(short_name = case_when(variable == "pcb1i01" ~ "FPB",
-                                variable == "pcb3i01" ~ "AGO",
-                                variable == "pce0i01" ~ "FBI",
-                                variable == "pcd2i01" ~ "RUM",
-                                variable == "pda0i02" ~ "DeI",
-                                variable == "pda0i03" ~ "D2M",
-                                variable == "pda1i01" ~ "DeQ",
-                                variable == "pbe1i01" ~ "SAP",
-                                variable == "pbe7i01" ~ "SAI",
-                                variable == "pbf8i01" ~ "SAF",
-                                variable == "pbf2i01" ~ "SAS",                              
-                                variable == "pfb7i01" ~ "InT",
-                                variable == "pfb7i02" ~ "InI",
-                                variable == "prc8i01" ~ "FGT",
+  mutate(short_name = case_when(variable == "pcb2i01" ~ "AGO",
+                                variable == "pcc0i01" ~ "SIT",
+                                variable == "pbf4i01" ~ "ALO",
+                                variable == "pbf5i01" ~ "ANT",
+                                variable == "pfb7i02" ~ "INI",
                                 variable == "prb8i01" ~ "BLT",
-                                variable == "pgc3i01" ~ "LIE",
-                                variable == "pgc5i01" ~ "CHT",
+                                variable == "pge2i01" ~ "VAN",
+                                variable == "P_Preg_23" ~ "WGT",
+                                variable == "P_Health_dev_6" ~ "CLM",
                                 variable == "P_Health_dev_9" ~ "REA",
-                                variable == "P_Health_dev_11" ~ "EST",
-                                variable == "P_Health_dev_13" ~ "W18",
+                                variable == "P_Health_dev_11" ~ "EST",                              
+                                variable == "P_Health_dev_12" ~ "SP2",
                                 variable == "P_Health_dev_15" ~ "SLT",
-                                variable == "P_Health_dev_21" ~ "LUN",
-                                variable == "P_Health_dev_24" ~ "CAR",
-                                variable == "P_Health_dev_27" ~ "MSK",
-                                variable == "P_ASQ_7" ~ "AWM",
-                                variable == "P_ASQ_8" ~ "ARP",
+                                variable == "P_Health_dev_20" ~ "RTI",
+                                variable == "P_SDQ_1" ~ "CNS",
+                                variable == "P_SDQ_6" ~ "SOL",
+                                variable == "P_SDQ_9" ~ "HRT",
+                                variable == "P_SDQ_16" ~ "DIS",
+                                variable == "P_SDQ_19" ~ "LIE",
+                                variable == "P_SDQ_20" ~ "CHT",
+                                variable == "P_SDQ_29" ~ "INC",
+                                variable == "P_ASQ_14" ~ "SII",
+                                variable == "P_ASQ_39" ~ "PIM",
+                                variable == "P_ASQ_40" ~ "PCO",
                                 variable == "CMD_2" ~ "CBA",
                                 variable == "CMD_5" ~ "CRF",
                                 variable == "CMD_6" ~ "COB",
-                                variable == "CMD_10" ~ "CCP")) 
+                                variable == "CMD_11" ~ "CGM",
+                                variable == "CMD_14" ~ "CBL",
+                                variable == "CMD_15" ~ "CSL")) |>
+  
+  mutate(variable_definition_dict = case_when(is.na(variable_definition_dict) ~ variable_definition,
+                                              TRUE ~ variable_definition_dict)) |>
+  select(-variable_definition)
 
 
-
-
-
-
-#Tabulate our variable definitions
-d_var|>
-  select(variable, Assessment, Section, short_name,var_def_long,`Paper Description`) |>
-  rename(short_def = var_def_long,
-         long_def   = `Paper Description`) |>
-  janitor::clean_names() |>
-  knitr::kable(format = "html", booktabs = TRUE) |>
-  kableExtra::kable_styling(font_size = 11)
-
+#Now we save these
 
 #Save this
-write_csv(d_var |>
-            janitor::clean_names() |>
-            select(variable,short_name,assessment,section,var_def_long,paper_description,dropout_loss,lower,upper), 
+write_csv(variable_table, 
           "C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/VariableDefinitionsExpanded.csv")
+
+
+#The idea is that we then get the full variable definitions from Jess and prepare a nice sheet of these definitions and the data  
+#types
+
+vd2 <- readxl::read_excel("VariableDefinitions.xlsx", 
+                          sheet = "Sheet1")
 
 
 
@@ -170,10 +194,6 @@ DF = bind_rows(d_last_fit |> analysis(),
                d_last_fit |> assessment())
 
 DF = DF |> relocate(group)
-
-DF2 = 
-  DF |>
-  select(all_of(d_var$variable)) 
 
 
 ## Do Polychor Correlations ======
@@ -247,9 +267,23 @@ r2 <- as.matrix(r2$mat)
 #Save up
 r2.df <- as.data.frame(r2)
 
+
+#Or we can use the hetcor package??
+r3.df = 
+  D3 |>
+  mutate(across(.cols = everything(),~as.numeric(.x))) |>
+  as.matrix() |>
+  polycor::hetcor(use = "pairwise.complete.obs",
+                  parallel = TRUE,
+                  ncores = 12)
+
+ggcorrplot::ggcorrplot(r2.df)
+ggcorrplot::ggcorrplot(r3.df$correlations)
+
+#Definitely similar 
+
 #Save this
 write_csv(r2.df, "C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/nested_cv_corr_mat.csv")
-
 # r2.df = read_csv( "C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/nested_cv_corr_mat.csv")
 
 
@@ -272,8 +306,8 @@ corr.mat =
   select(-variable) |> 
   as.matrix()
 
-row.names(corr.mat) = d_var$short_name
-colnames(corr.mat) = d_var$short_name
+row.names(corr.mat) = variable_table$short_name
+colnames(corr.mat)  = variable_table$short_name
 
 ggcorrplot(corr.mat, hc.order = TRUE, outline.color = "white")
 
@@ -285,8 +319,8 @@ ggcorrplot(corr.mat, hc.order = TRUE, outline.color = "white")
 #As in the original draft of the paper, we can do EGA
 
 #Can we switch out our variable names for our short names
-name_swap        = d_var$variable
-names(name_swap) = d_var$short_name
+name_swap        = variable_table$variable
+names(name_swap) = variable_table$short_name
 
 d_ega = 
   bind_rows(d_last_fit |> analysis(),
@@ -305,41 +339,52 @@ qgraph(cor_auto(d_ega), layout="spring")
 ## Calculate EGA =====
 
 # exploratory graph analysis
-EGA_0 <- EGA(d_ega |> select(-group), 
-             plot.EGA = TRUE,
-             model = "glasso",
-             algorithm = "walktrap",
-             corr = "spearman")
+EGA_0 <- 
+  EGA(d_ega |> select(-group), 
+      plot.EGA = TRUE,
+      model = "glasso",
+      algorithm = "walktrap",
+      corr = "spearman")
 
-#So this produces 4 dimensions
+#So this produces 6 dimensions
 
-# 1 - Anxiety/Conduct
-# 2 - Health/Development
-# 3 - Insomnia
-# 4 - Depression
+# 1 - Health/Development
+# 2 - Co-ordination
+# 3 - Pro-social behaviour
+# 4 - Conduct problems
+# 5 - Situation anxiety + insomnia
+# 6 - anxiety related to being left alone
+
+# Plus weight at birth which doesn't fit in any
 
 #Every time we seem to run this we get somewhat different results, which suggests a rather unstable structure
+
+#So we run the bootstrapped EGA method to test this out
 set.seed(08092022)
 
-#Now we run the bootstrapped EGA method
 parallel:::setDefaultClusterOptions(setup_strategy = "parallel")
 
-EGA_boot_0 <- bootEGA(d_ega |> select(-group), 
-                      iter = 10000,
-                      type = "resampling",
-                      seed = 15082022,
-                      uni.method = "LE",
-                      corr = "spearman",
-                      model = "glasso",
-                      algorithm = "walktrap",
-                      typicalStructure = TRUE,
-                      plot.typicalStructure = TRUE,
-                      plot.type = "GGally",
-                      ncores = 16)
+EGA_boot_0 <- 
+  bootEGA(d_ega |> select(-group), 
+          iter = 10000,
+          type = "resampling",
+          seed = 15082022,
+          uni.method = "LE",
+          corr = "spearman",
+          model = "glasso",
+          algorithm = "walktrap",
+          typicalStructure = TRUE,
+          plot.typicalStructure = TRUE,
+          plot.type = "GGally",
+          ncores = 16)
 
-#This actually produces a 4 dimension solution - but the modal network size is 5. This is all very odd - why is it doing that
+#This produces a 6 dimension solution - but the graph has 5?
 EGA_boot_0$summary.table
-EGA_boot_0$boot.ndim |> as_tibble() |> ggplot(aes(N.Dim)) + geom_histogram(binwidth = 1)
+
+EGA_boot_0$boot.ndim |> 
+  as_tibble() |> 
+  ggplot(aes(N.Dim)) + 
+  geom_histogram(binwidth = 1)
 
 #This is the bit of the object that contains the useful data
 # EGA_boot_0$typicalGraph
@@ -350,17 +395,18 @@ EGA_boot_0$boot.ndim |> as_tibble() |> ggplot(aes(N.Dim)) + geom_histogram(binwi
 # Plot the empirical EGA and bootstrap alongside each other
 EGA_0 |> plot() |EGA_boot_0 |> plot()
 
-#So dimensions 1 and 2 are transposed
+#So some of the names are transposed and the conduct thing gets merged
 
 # #Plot our bootstrapped graph
 p_EGA_boot_0 =
   EGA_boot_0 |>
   plot(plot.args = list(vsize = 5,
                         label.size = 4,
-                        legend.names = c("1: Development/Health",
-                                         "2: Anxiety/Hyperactivity",
-                                         "3: Sleep",
-                                         "4: Depression") )) +
+                        legend.names = c("1: Conduct",
+                                         "2: Health/Development",
+                                         "3: Co-ordination",
+                                         "4: Situation Anxiety/Sleep",
+                                         "5: Separation Anxiety") )) +
   labs(title = "EGA Plot")
 
 
@@ -384,8 +430,8 @@ EGA_boot_0_stab$item.stability$item.stability$empirical.dimensions |>
   arrange(-value) |>
   print(n = 30)
 
-#So you can see the insomnia and depression items are very consistently assigned to
-#their dimension over bootstraps, but 1- variables have a proportion < 0.75, suggesting
+#So you can see the situational anxiety and conduct items are very consistently assigned to
+#their dimension over bootstraps, but 10 variables have a proportion < 0.75, suggesting
 #they are rather unstable in their dimensional affiliation
 
 
@@ -395,7 +441,7 @@ EGA_boot_0_stab$item.stability$item.stability$all.dimensions |>
   mutate(across(where(is.double),~if_else(.x < 0.15,0,.x))) |>
   print(n = 30)
 
-#So some variables are popping in between dimensions 1 and 5 or 2 and 5, or 1 and 2 and 5
+#So some variables are popping in between dimensions much more than others
 
 #Mean network loadings
 EGA_boot_0_stab$item.stability$mean.loadings |>
@@ -416,33 +462,36 @@ EGA_boot_0_stab$item.stability$mean.loadings |>
 
 parallel:::setDefaultClusterOptions(setup_strategy = "parallel")
 
-EGA_boot_1 <- bootEGA(d_ega |> select(all_of(EGA_boot_0_stab$item.stability$item.stability$empirical.dimensions |> 
-                                               as_tibble(rownames = "variable") |>
-                                               filter(value > 0.75) |>
-                                               pull(variable))), 
-                      iter=10000,
-                      type = "resampling",
-                      seed = 15082022,
-                      uni.method = "LE",
-                      corr = "spearman",
-                      model = "glasso",
-                      algorithm = "walktrap",
-                      typicalStructure = TRUE,
-                      plot.typicalStructure = TRUE,
-                      plot.type = "GGally",
-                      ncores = 16)
+EGA_boot_1 <- 
+  bootEGA(d_ega |>
+            select(all_of(EGA_boot_0_stab$item.stability$item.stability$empirical.dimensions |> 
+                            as_tibble(rownames = "variable") |>
+                            filter(value > 0.75) |>
+                            pull(variable))), 
+          iter=9999,
+          type = "resampling",
+          seed = 15082022,
+          uni.method = "LE",
+          corr = "spearman",
+          model = "glasso",
+          algorithm = "walktrap",
+          typicalStructure = TRUE,
+          plot.typicalStructure = TRUE,
+          plot.type = "GGally",
+          ncores = 16)
 
 #Now lets look at the stability again
 EGA_boot_1_stab = dimensionStability(EGA_boot_1)
 
 EGA_boot_1_stab$dimension.stability$structural.consistency
 
-#Now we have 4 very consistent dimensions
+#Now we have 5 very consistent dimensions
 
-# 1 - Anxiety (separation anxiety, agoraphobia)
-# 2 - Co-ordination and development
-# 3 - Insomnia
-# 4 - Depression
+# 1 - Communication/Play
+# 2 - Conduct
+# 3 - Co-ordination
+# 4 - Situational anxiety and sleep
+# 5 - Separation Anxiety
 
 #Item stability across all variables
 EGA_boot_1_stab$item.stability$item.stability$all.dimensions |>
@@ -465,15 +514,16 @@ EGA_boot_1_stab$item.stability$mean.loadings |>
 
 #Make the plot that will become figure 4
 p_EGA_boot_1 =
-  EGA_boot_1 |>
+  EGA_boot_1 |> 
   plot(plot.args = list(vsize = 5,
                         label.size = 4,
                         node.color = "black",
                         edge.color = c("grey20","grey20"),
-                        legend.names = c("1: Anxiety",
-                                         "2: Movement/Development",
-                                         "3: Insomnia",
-                                         "4: Depression") ))
+                        legend.names = c("1: Conduct",
+                                         "2: Separation Anxiety",
+                                         "3: Situational Anxiety/Sleep",
+                                         "4: Communication/Play",
+                                         "5: Movement/Co-ordination") ))
 
 p_EGA_boot_1
   
@@ -497,41 +547,47 @@ Typical <- EGA_boot_1$typicalGraph$typical.dim.variables
 
 #We need to think of some names for the dimensions
 
-# Dim 1 is Anxiety
-# Dim 2 is Development and Co-ordination
-# Dim 3 is Insomnia
-# Dim 4 is Depression
+# Dim 1 is Conduct
+# Dim 2 is Separation Anxiety
+# Dim 3 is Situational Anxiety and sleep
+# Dim 4 is Communication and play
+# Dim 5 is Co-ordination
 
 #Glue that together with the variable information
 var_dims = 
   Typical |>
   as_tibble() |>
   rename(short_name = items) |>
-  left_join(d_var,by = "short_name")
+  left_join(variable_table,by = "short_name")
 
 var_dims = 
   var_dims |> 
   mutate(dim_name = case_when(
-    dimension == 1 ~ "Anxiety",
-    dimension == 2 ~ "Development/Co-ordination",
-    dimension == 3 ~ "Insomnia",
-    dimension == 4 ~ "Depression"))
+    dimension == 1 ~ "Conduct",
+    dimension == 2 ~ "Separation Anxiety",
+    dimension == 3 ~ "Situational Anxiety/Sleep",
+    dimension == 4 ~ "Communication/Play",
+    dimension == 5 ~ "Movement/Co-ordination"))
   
-var_dims |> 
-  select(variable,short_name,var_def,dim_name,dropout_loss,.lower,.upper) |>
+var_dims = 
+  var_dims |> 
+  select(variable,short_name,dim_name,variable_definition_dict) |>
+  left_join(d_var |> select(variable,dropout_loss,.lower,.upper),
+            by = "variable")  
+
+var_dims|>
   print(n = 30)
 
 #Save as a spreadsheet
 
-write_csv(var_dims |>
-            select(variable,short_name,var_def,dim_name,dropout_loss,.lower,.upper), 
-          "C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/nested_cv_variable_dimensions.csv")
+write_csv(var_dims,
+          "nested_cv_variable_dimensions.csv")
 
 
 ## Table 6 ======
 
-var_dims = read_csv("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/nested_cv_variable_dimensions.csv")
-d_var    = read_csv("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/nested_cv_selected_var_definitions_expanded.csv")
+var_dims = read_csv("nested_cv_variable_dimensions.csv")
+d_var    = read_csv("nested_cv_selected_var_definitions_expanded.csv")
 
 #Make a table as in the manuscript
 
@@ -564,30 +620,30 @@ var_dims |>
   theme_bw() +
   theme(panel.grid = element_blank()) +
   labs(x = "Dropout Loss (1 - AUC)", y = "Variable", 
-       title = "Best SVM Model") +
+       title = "Best RF Model") +
   facet_wrap(~dim_name, ncol = 1)
 
 #So there is no real pattern in terms of different dimensions being more predictive -
 #maybe the development/movement dimension is more predictive
 
 
-
-
 ## CFA on the graph structure =====
 
-
 # Do CFA on the domains identified by EGA, using an EGA built in function
+EGA_CFA <- 
+  CFA(EGA_boot_1$EGA, d_ega |> select(-group), estimator = "WLSMV")
 
-#This is odd because it is getting different numbers of dimensions
-
-EGA_CFA <- CFA(EGA_boot_1$EGA, d_ega |> select(-group), estimator = "ML")
-
-effectsize::interpret(EGA_CFA$fit)
-
+#Get a summary of the model
 summary(EGA_CFA)
 
-p_cfa = 
-  EGA_CFA |> plot()
+#Interpret the indices of model fit
+effectsize::interpret_cfi(EGA_CFA$fit.measures[4] )
+effectsize::interpret_rmsea(EGA_CFA$fit.measures[5])
+
+
+#Make a plot of the factors
+EGA_CFA |> 
+  plot()
 
 
 
@@ -595,7 +651,6 @@ p_cfa =
 # UVA =====
 
 # The EGA package also has a method that tries to identify redundant variables
-
 uva_0 = UVA(d_ega |> select(-group))
 
 #Apparently we have no redundant variables, which is nice
