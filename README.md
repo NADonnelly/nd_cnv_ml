@@ -26,4 +26,4 @@ The Main Scripts folder contains the R scripts that do the analysis:
 
 * 10-ML-Final.R takes the minimal set of variables from the dimensions identified by the EGA analysis and fits the ML classification models using only these variables, and measures performance
 
-* 11-Model-Deployment.R contains code for making the accompanying shiny app
+* 11-Model-Deployment.R contains code for making the accompanying [shiny app](https://nadonnelly.shinyapps.io/cnv_ml_app/)
