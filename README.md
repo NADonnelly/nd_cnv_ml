@@ -2,7 +2,7 @@
 
 This project contains the code used in the ND-CNV machine learning paper (preprint link here)
 
-The data used in the study is available via the (IMAGINE ID study)[https://imagine-id.org/healthcare-professionals/]
+The data used in the study is available via the [IMAGINE ID study](https://imagine-id.org/healthcare-professionals/)
 
 The Main Scripts folder contains the R scripts that do the analysis:
 
