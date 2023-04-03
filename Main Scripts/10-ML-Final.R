@@ -703,8 +703,8 @@ max_j_index_threshold <-
   pull(.threshold) |>
   median()
 
-## Confusion Matrix =====
 
+## Confusion Matrix =====
 
 #What are the actual numbers of test participants classified
 best_mods |>

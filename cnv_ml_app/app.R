@@ -13,7 +13,7 @@
 library(shiny)
 library(shinydashboard)
 library(tibble)
-library(kernlab)
+library(ranger)
 library(dplyr)
 library(magrittr)
 library(workflows)
@@ -23,8 +23,8 @@ conflicted::conflict_prefer("box", "shinydashboard")
 conflicted::conflict_prefer("observe", "shiny")
 
 #Load the model
-m_30 <- readRDS("svm_model_30.rds")
-m_4  <- readRDS("svm_model_4.rds")
+m_30 <- readRDS("rf_model_30.rds")
+m_5  <- readRDS("en_model_5.rds")
 m_lr <- readRDS("lr_model_30.rds")
 
 
@@ -47,9 +47,9 @@ ui <- dashboardPage(
   dashboardSidebar(
     
     sidebarMenu(
-      menuItem("30-Item Model", tabName = "model30", icon = icon("code")),
-      menuItem("4-Item Model" , tabName = "model4" , icon = icon("code")),
-      menuItem("Logistic Regression Model" , tabName = "model_lr" , icon = icon("code"))
+      menuItem("30-Item RF Model", tabName = "model30" , icon = icon("code")),
+      menuItem("5-Item EN Model" , tabName = "model5"  , icon = icon("code")),
+      menuItem("30-Item LR Model", tabName = "model_lr", icon = icon("code"))
     )
     
   ),
@@ -545,13 +545,13 @@ ui <- dashboardPage(
       ),
       
       
-      ### 4 item model UI ======
+      ### 5 item model UI ======
       
-      #Second Tab: 4 item model
+      #Second Tab: 5 item model
       tabItem(
         
         #Tab name
-        tabName = "model4",
+        tabName = "model5",
         
         # Tab title
         h2("4 Item Prediction Model"),
@@ -646,7 +646,7 @@ ui <- dashboardPage(
       
       
       
-      ### LR model UI ======
+      ### 30 Item LR model UI ======
       
       #Second Tab: lr model
       tabItem(
@@ -1034,26 +1034,26 @@ server <- function(input, output) {
   
   
   
-  ## 4 item model =====
+  ## 5 item model =====
   
-  #This is the output for the 4 item model
+  #This is the output for the 5 item model
   output$text4 <- 
     renderText({ 
       
-      d_input_4 = tibble("pbe1i01"         = input$m4_sap |> as.integer(),
+      d_input_5 = tibble("pbe1i01"         = input$m4_sap |> as.integer(),
                          "P_Health_dev_15" = input$m4_slt |> as.integer(),
                          "pfb7i02"         = input$m4_ini |> as.integer(),
                          "pda0i02"         = input$m4_dei |> as.integer()
       )
       
-      # m_4 |>
+      # m_5 |>
       #   predict(d_input_4,type = "prob") |>
       #   pull(`.pred_ND-CNV`) |>
       #   round(digits = 3) %>%
       #   paste("predicted probability ND-GC = ",.,sep = "")
       
-      m_4 |>
-        predict(d_input_4,type = "prob") |>
+      m_5 |>
+        predict(d_input_5,type = "prob") |>
         pull(`.pred_ND-CNV`) |>
         round(digits = 3) |>
         paste()
@@ -1061,10 +1061,10 @@ server <- function(input, output) {
     })
   
   
-  #Reset button on 4 item model
+  #Reset button on 5 item model
   observe({
     
-    x <- input$reset_4
+    x <- input$reset_5
 
     updateRadioButtons(session = getDefaultReactiveDomain(),"m4_sap",selected = 0)
     updateRadioButtons(session = getDefaultReactiveDomain(),"m4_slt",selected = 0)

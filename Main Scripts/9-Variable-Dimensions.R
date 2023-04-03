@@ -169,16 +169,31 @@ variable_table =
   select(-variable_definition)
 
 
-#Now we save these
+#Lets make a column that tells us if a variable is binary, ordinal or continuous (we include this information
+#in the table in the paper)
+variable_table = 
+  d_last_fit |> 
+  training() |> 
+  select(all_of(variable_table$variable)) |> 
+  pivot_longer(everything()) |> 
+  nest_by(name) |> 
+  mutate(nd = dim(unique(data))[1]) |>
+  mutate(var_type = case_when(nd == 2 ~ "binary",
+                              nd >2 & nd <=5 ~ "ordinal",
+                              nd > 5 ~ "continuous")) |>
+  rename(variable = name) |>
+  select(variable,var_type) |>
+  left_join(variable_table,by = "variable") |>
+  select(variable,short_name,data_type,var_type,assessment,section,variable_definition_dict) |>
+  arrange(variable)
 
-#Save this
-write_csv(variable_table, 
-          "C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/VariableDefinitionsExpanded.csv")
+
+#Now we save this
+write_csv(variable_table,"./VariableDefinitionsExpanded.csv")
 
 
 #The idea is that we then get the full variable definitions from Jess and prepare a nice sheet of these definitions and the data  
 #types
-
 vd2 <- readxl::read_excel("VariableDefinitions.xlsx", 
                           sheet = "Sheet1")
 
@@ -397,6 +412,9 @@ EGA_boot_0_stab$item.stability$mean.loadings |>
 
 #Here we repeat the bootstrap EGA, removing the variables with an item stability < 0.75
 
+
+# Fit final EGA model ======
+
 parallel:::setDefaultClusterOptions(setup_strategy = "parallel")
 
 EGA_boot_1 <- 
@@ -416,6 +434,13 @@ EGA_boot_1 <-
           plot.typicalStructure = TRUE,
           plot.type = "GGally",
           ncores = 16)
+
+
+#It takes ages to fit this model, so lets save it
+write_rds(EGA_boot_1,'final_ega_model.rds')
+# EGA_boot_1 = read_rds('final_ega_model.rds')
+
+
 
 #Now lets look at the stability again
 EGA_boot_1_stab = dimensionStability(EGA_boot_1)
@@ -470,9 +495,6 @@ ggsave("C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Redu
 
 
 
-#The package also contains a function that makes a method section from the object (amazing!)
-methods.section(EGA_boot_1)
-
 
 ## Extract dimensions =====
 
@@ -500,11 +522,11 @@ var_dims =
 var_dims = 
   var_dims |> 
   mutate(dim_name = case_when(
-    dimension == 1 ~ "Conduct",
-    dimension == 2 ~ "Separation Anxiety",
-    dimension == 3 ~ "Situational Anxiety/Sleep",
-    dimension == 4 ~ "Communication/Play",
-    dimension == 5 ~ "Movement/Co-ordination"))
+    dimension == 1 ~ "1: Conduct",
+    dimension == 2 ~ "2: Separation Anxiety",
+    dimension == 3 ~ "3: Situational Anxiety/Sleep",
+    dimension == 4 ~ "4: Communication/Play",
+    dimension == 5 ~ "5: Movement/Co-ordination"))
   
 var_dims = 
   var_dims |> 
@@ -516,39 +538,45 @@ var_dims|>
   print(n = 30)
 
 #Save as a spreadsheet
+write_csv(var_dims, "nested_cv_variable_dimensions.csv")
 
-write_csv(var_dims,
-          "nested_cv_variable_dimensions.csv")
+
+
+#The package also contains a function that makes a method section from the object (amazing!)
+methods.section(EGA_boot_1)
+
 
 
 ## Supplementary Table 7 ======
 
-var_dims = read_csv("nested_cv_variable_dimensions.csv")
-d_var    = read_csv("nested_cv_selected_var_definitions_expanded.csv")
+#Tibbulate the full table of variable definitions
+var_dims     = read_csv("nested_cv_variable_dimensions.csv")
+var_expanded = read_csv("VariableDefinitionsExpanded.csv")
+d_var_full   = readxl::read_excel("VariableDefinitions.xlsx", sheet = "Sheet1")
 
-#Make a table as in the manuscript
-
+#Make a table for the manuscript
 left_join(var_dims |>
-            select(variable,dim_name),
-          d_var|>
-            select(variable, short_name,var_def_long,paper_description) |>
-            rename(short_def = var_def_long,
-                   long_def  = paper_description) ,
+            select(variable,short_name,dim_name),
+          d_var_full |>
+            select(Code, `Paper Description`) |>
+            janitor::clean_names() |>
+            rename(variable = code),
           by = "variable") |>
-  relocate(variable,short_name,short_def,long_def,dim_name)|>
-  select(-short_def) |>
-  rename(Variable = variable,
-         `Variable Name` = short_name,
-         `Variable Definition` = long_def,
+  left_join(var_expanded |> 
+              select(short_name,var_type),
+            by = "short_name") |>
+  relocate(variable,short_name,paper_description,var_type,dim_name)|>
+  rename(Variable = short_name,
+         `Variable Definition` = paper_description,
+         `Variable Type` = var_type,
          `Dimension Name` = dim_name) |>
+  select(-variable) |>
   knitr::kable(format = "html", booktabs = TRUE) |>
   kableExtra::kable_styling(font_size = 11)
 
 
 
-
 # Make a variable importance plot, but coloured by dimension
-
 var_dims |>
   ggplot(aes(x = dropout_loss, y = forcats::fct_reorder(short_name,dropout_loss,max),
              xmin = .lower, xmax = .upper, colour = dim_name)) +
@@ -562,6 +590,7 @@ var_dims |>
 
 #So there is no real pattern in terms of different dimensions being more predictive -
 #maybe the development/movement dimension is more predictive
+
 
 
 ## CFA on the graph structure =====

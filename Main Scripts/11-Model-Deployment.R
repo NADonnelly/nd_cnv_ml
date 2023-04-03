@@ -5,28 +5,42 @@
 pacman::p_load(tidyverse,
                tidymodels,
                vetiver,
-               crayon)
-
+               crayon,
+               patchwork)
 
 tidymodels_prefer()
+
+`%nin%` = Negate(`%in%`)
+
+
+#Set our data directory
+if(str_detect(Sys.info()[['nodename']],'IT088825')){
+  data_dir = 'C://Users/pyxnd/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data'
+  
+}else if(str_detect(Sys.info()[['nodename']],'AVOCADO')){
+  
+  data_dir = "C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/"
+}
+
+setwd(data_dir)
+
 
 #We load our final models
 
 
 #These are the 30 variable models
-d_var_select_results = read_rds("C:/Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/nested_cv_result_selected_vars.rds")
+d_var_select_results = read_rds("nested_cv_result_selected_vars_v2.rds")
 
 #This is the 4 variable model
-d_var_ega_results    = read_rds("C:/Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/nested_cv_result_ega_vars.rds")
+d_var_ega_results    = read_rds("nested_cv_result_ega_vars.rds")
 
 #This is the test data
-d_last_fit           = read_rds("C:/Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/Data/nested_cv_imputed_data.rds")
+d_last_fit           = read_rds("nested_cv_imputed_data.rds")
 
 
 # Extract best models =====
 
 best_mods = 
-  
   bind_rows(
     d_var_select_results |>
       select(-.mod_posterior) |>
@@ -34,18 +48,17 @@ best_mods =
     d_var_ega_results |>
       select(-.mod_posterior) |>
       unnest(.results)) |> 
-  
-  separate(wflow_id,
-           into = c("vars","mod_type"),
-           sep = "_", 
-           extra = "merge") |>
-  
-  group_by(vars) |>
-  
+  filter(str_detect(wflow_id,"simple") | str_detect(wflow_id,"EGA") ) |>
+  mutate(wflow_id = str_remove(wflow_id,"simple_")) |>
+  separate_wider_delim(wflow_id,
+           names = c("var_set","model"),
+           delim = "_") |>
+  group_by(var_set,model) |>
   slice_max(best_roc_auc) |>
   
   #filter so that we have the variable sets we wish to see
-  filter(vars %in% c("EGA","SVM"))
+  filter((var_set %in% c("rf") & model %in% c("rf")) | (var_set %in% c("EGA") & model %in% c("en")) )
+
 
 best_mods = 
   best_mods |>
@@ -55,12 +68,12 @@ best_mods =
                                metrics = metric_set(accuracy,kap,mn_log_loss,roc_auc,gain_capture))) |>
   mutate(best_metrics = map(test_fit, ~.x$.metrics[[1]]))
 
-
-best_mods$best_params[[1]]
-best_mods$best_wf_final[[1]]
+# 
+# best_mods$best_params[[1]]
+# best_mods$best_wf_final[[1]]
 
 best_mods |> 
-  select(vars,best_metrics) |> 
+  select(var_set,best_metrics) |> 
   unnest(best_metrics) |> 
   filter(.metric %in% c("roc_auc","mn_log_loss"))
 
@@ -72,10 +85,12 @@ best_mods |>
 #What I would like to do is to calculate the predicted probability from the EGA model at each possible value
 #that the inputs can take
 
-# The 4 selected variables are actually all binary...
-
+#Get all combinations of inputs for the 5 variables - this is doable with only 5 variables, only one of which 
+#ordinal
 vars_ega = 
-  best_mods$test_fit[[1]] |> 
+  best_mods |>
+  filter(var_set == "EGA") |>
+  pluck("test_fit",1) |> 
   extract_recipe() %>%
   .$var_info
 
@@ -95,7 +110,9 @@ d_fit_ega =
 #can do random sampling from the combinations available?
 
 vars_30 = 
-  best_mods$test_fit[[2]] |> 
+  best_mods |>
+  filter(var_set == "rf") |>
+  pluck("test_fit",1) |> 
   extract_recipe() %>%
   .$var_info
 
@@ -120,27 +137,33 @@ d_fit_30 =
 
 
 #Now we need to work out how to fit these
+
+#Note in out final ML we found a threshold of 0.7625 to be optimal for classification j-index
 p_ega = 
   bind_cols(
     d_fit_ega,
-  best_mods$test_fit[[1]]$.workflow[[1]] |>
-    predict(d_fit_ega,type = "class"),
-  best_mods$test_fit[[1]]$.workflow[[1]] |>
-    predict(d_fit_ega,type = "prob")) |>
-  mutate(total = rowSums(across(pbe1i01:pda0i02 ))) |>
+    best_mods$test_fit[[1]]$.workflow[[1]] |>
+      predict(d_fit_ega,type = "class"),
+    best_mods$test_fit[[1]]$.workflow[[1]] |>
+      predict(d_fit_ega,type = "prob")
+    ) |>
+  mutate(total = rowSums(across(1:5))) |>
   group_by(total) |>
-  summarise(var_min  = min(`.pred_ND-CNV`),
-            var_prop = median(`.pred_ND-CNV`),
-            var_max  = max(`.pred_ND-CNV`)) |>
+  summarise(var_min  = min(`.pred_ND-GC`),
+            var_prop = median(`.pred_ND-GC`),
+            var_max  = max(`.pred_ND-GC`)) |>
   ggplot(aes(x = total,y = var_prop)) +
   geom_col() +
   geom_point(size = 2) +
-  geom_hline(yintercept = 0.5,lty = 2) +
+  geom_hline(yintercept = 0.7625,lty = 2) +
   geom_hline(yintercept = 1,lty = 1) +
   geom_linerange(aes(ymin = var_min,ymax = var_max)) +
   theme_bw() +
-  labs(x = "Total Score", y = "Probability CNV Carrier")
+  labs(x = "Total Score", y = "Probability ND-GC Carrier")
 
+#Calibration of the 5 item model sucks
+
+#For the full 30 variable RF model a threhsold of 0.835 was optimal
 p_30 = 
   bind_cols(
     d_fit_30,
@@ -150,17 +173,17 @@ p_30 =
       predict(d_fit_30,type = "prob")) |>
   mutate(total = rowSums(across(CMD_2:P_Health_dev_9 ))) |>
   group_by(total) |>
-  summarise(var_min  = min(`.pred_ND-CNV`),
-            var_prop = median(`.pred_ND-CNV`),
-            var_max  = max(`.pred_ND-CNV`)) |>
+  summarise(var_min  = min(`.pred_ND-GC`),
+            var_prop = median(`.pred_ND-GC`),
+            var_max  = max(`.pred_ND-GC`)) |>
   ggplot(aes(x = total,y = var_prop)) +
   geom_col() +
   geom_point(size = 2) +
-  geom_hline(yintercept = 0.5,lty = 2) +
+  geom_hline(yintercept = 0.835,lty = 2) +
   geom_hline(yintercept = 1,lty = 1) +
   geom_linerange(aes(ymin = var_min,ymax = var_max)) +
   theme_bw() +
-  labs(x = "Total Score", y = "Probability CNV Carrier")
+  labs(x = "Total Score", y = "Probability ND-GC Carrier")
 
 
 p_ega|p_30
@@ -168,7 +191,7 @@ p_ega|p_30
 
 # Simplify best model =====
 
-#Our best model is a megabyte, which isn't too bad, but 
+#Our best model is a brisk 8 megabytes, which seems weighty
 #I suspect we could do better
 lobstr::obj_size(best_mods$test_fit[[2]]$.workflow[[1]])
 
@@ -202,22 +225,21 @@ d_test_30 =
 #It does seem to work
 butchered_wf |>
   predict(d_test_30 |> slice(1),type = "prob") |>
-  pull(`.pred_ND-CNV`) |>
+  pull(`.pred_ND-GC`) |>
   round(digits = 3) %>%
   paste("predicted probability ND-GC = ",.,sep = "")
 
 #Now we need to load it into a shiny app
 
 #lets save our model
-
-write_rds(butchered_wf,"./cnv_ml_app/svm_model_30.rds")
+write_rds(butchered_wf,"C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/CNV_ML/cnv_ml_app/rf_model_30.rds")
 
 #Lets do the same for the 4 item model
-butchered_wf_4 = 
+butchered_wf_5 = 
   butcher::butcher(best_mods$test_fit[[1]]$.workflow[[1]])
 
 
-write_rds(butchered_wf_4,"./cnv_ml_app/svm_model_4.rds")
+write_rds(butchered_wf_5,"C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/CNV_ML/cnv_ml_app/en_model_5.rds")
 
 
 # Vetiver? =====
@@ -297,17 +319,17 @@ mcc(cnv_results, truth = group,
     estimate = .pred_class)
 
 mn_log_loss(cnv_results, truth = group,
-    estimate = `.pred_ND-CNV`,event_level = "second")
+    estimate = `.pred_ND-GC`,event_level = "second")
 
 roc_auc(cnv_results, truth = group,
-            estimate = `.pred_ND-CNV`,event_level = "second")
+            estimate = `.pred_ND-GC`,event_level = "second")
 
 accuracy(cnv_results, truth = group,
                       .pred_class,event_level = "second")     
         
         
 
-## 4 variable model =====
+## 5 variable model =====
 
 
 fitted_logistic_model_ega <- 
@@ -371,10 +393,10 @@ mcc(cnv_results_ega, truth = group,
     estimate = .pred_class)
 
 mn_log_loss(cnv_results_ega, truth = group,
-            estimate = `.pred_ND-CNV`,event_level = "second")
+            estimate = `.pred_ND-GC`,event_level = "second")
 
 roc_auc(cnv_results_ega, truth = group,
-        estimate = `.pred_ND-CNV`,event_level = "second")
+        estimate = `.pred_ND-GC`,event_level = "second")
 
 accuracy(cnv_results_ega, truth = group,
          .pred_class,event_level = "second")     
@@ -383,8 +405,6 @@ accuracy(cnv_results_ega, truth = group,
 ## Compare LR models ======
 
 #We can estimate confidence intervals for the final performance metrics by bootstrapping
-
-
 bootstrap_wf_metrics <- function(wf,data_set,n_boot = 500,c_m = metric_set(roc_auc,mn_log_loss)){
   
   
@@ -401,7 +421,7 @@ bootstrap_wf_metrics <- function(wf,data_set,n_boot = 500,c_m = metric_set(roc_a
                                                    analysis()|>
                                                    select(group)) |>
                                 mutate(group = fct_rev(group)) |>
-                                c_m(group,`.pred_ND-CNV`)))
+                                c_m(group,`.pred_ND-GC`)))
   
   return(bs)
   
@@ -409,36 +429,38 @@ bootstrap_wf_metrics <- function(wf,data_set,n_boot = 500,c_m = metric_set(roc_a
 
 
 
-boot_mods_svm = 
-  best_mods |> 
+boot_mods_final = 
+  best_mods |>
+  rename(mod_type = model) |>
   select(mod_type,test_fit) |> 
   unnest(test_fit)|>
   mutate(boot_metrics = map(.workflow, ~bootstrap_wf_metrics(wf = .x,
                                                              data_set = d_last_fit |>
                                                                testing(),
-                                                             n_boot = 2000) ))
+                                                             n_boot = 999) ))
 
 
 #Now apply this function to our data
-boot_mods = 
+boot_mods_lr = 
   tibble(mod_type = c("lr_30","lr_ega"),
          model = list(fitted_logistic_model,fitted_logistic_model_ega)) |>
   mutate(boot_metrics = map(model, ~bootstrap_wf_metrics(wf = .x,
                                                              data_set = d_last_fit |>
                                                                testing(),
-                                                             n_boot = 2000) ))
+                                                             n_boot = 999) ))
 
 
 
 #Make a plot of our bootstrapped values
 
 bind_rows(
-  boot_mods |>
+  boot_mods_lr |>
     select(mod_type,boot_metrics),
-  boot_mods_svm |> 
+  boot_mods_final |> 
     ungroup() |>
-    mutate(mod_type = paste(mod_type,"_",vars,sep="")) |>
-    select(mod_type,boot_metrics)) |>
+    mutate(mod_type = paste(mod_type,"_",var_set,sep="")) |>
+    select(mod_type,boot_metrics)
+  ) |>
   unnest(boot_metrics)|>
   select(-splits) |>
   unnest(boot_metrics) |>
@@ -450,32 +472,32 @@ bind_rows(
 #Compare models based on the bootstrapped samples
 boot_pd = 
   left_join(
-    bind_rows(boot_mods_svm |> mutate(mod_type = paste(mod_type,vars,sep = "_")) |> ungroup() |> select(mod_type,boot_metrics) ,
-              boot_mods |> select(mod_type,boot_metrics)) |>
+    bind_rows(boot_mods_final |> mutate(mod_type = paste(mod_type,var_set,sep = "_")) |> ungroup() |> select(mod_type,boot_metrics) ,
+              boot_mods_lr |> select(mod_type,boot_metrics)) |>
       unnest(boot_metrics)|>
       select(-splits) |>
       unnest(boot_metrics) |>
       filter(.metric == "roc_auc") |>
       pivot_wider(names_from = mod_type,values_from = .estimate) |>
-      mutate(svm30_svm4 = SVM.linear_SVM - SVM.linear_EGA,
-             svm30_lr30 = SVM.linear_SVM - lr_30,
-             svm30_lr4  = SVM.linear_SVM - lr_ega) |>
-      select(svm30_svm4,svm30_lr30,svm30_lr4) |>
+      mutate(rf30_en5  = rf_rf - en_EGA,
+             rf30_lr30 = rf_rf - lr_30,
+             rf30_lr5  = rf_rf - lr_ega) |>
+      select(rf30_en5,rf30_lr30,rf30_lr5) |>
       pivot_longer(everything()) |>
       group_by(name) |>
       ggdist::mean_hdci(value),
     
-      bind_rows(boot_mods_svm |> mutate(mod_type = paste(mod_type,vars,sep = "_")) |> ungroup() |> select(mod_type,boot_metrics) ,
-                boot_mods |> select(mod_type,boot_metrics)) |>
+      bind_rows(boot_mods_final |> mutate(mod_type = paste(mod_type,var_set,sep = "_")) |> ungroup() |> select(mod_type,boot_metrics) ,
+                boot_mods_lr |> select(mod_type,boot_metrics)) |>
       unnest(boot_metrics)|>
       select(-splits) |>
       unnest(boot_metrics) |>
       filter(.metric == "roc_auc") |>
       pivot_wider(names_from = mod_type,values_from = .estimate) |>
-      mutate(svm30_svm4 = SVM.linear_SVM - SVM.linear_EGA,
-             svm30_lr30 = SVM.linear_SVM - lr_30,
-             svm30_lr4  = SVM.linear_SVM - lr_ega) |>
-      select(svm30_svm4,svm30_lr30,svm30_lr4) |>
+      mutate(rf30_en5  = rf_rf - en_EGA,
+             rf30_lr30 = rf_rf - lr_30,
+             rf30_lr5  = rf_rf - lr_ega) |>
+      select(rf30_en5,rf30_lr30,rf30_lr5) |>
       pivot_longer(everything()) |>
       group_by(name) |>
       nest() |>
@@ -499,4 +521,4 @@ boot_pd =
 butchered_lr = 
   butcher::butcher(fitted_logistic_model)
 
-write_rds(butchered_lr,"./cnv_ml_app/lr_model_30.rds")
+write_rds(butchered_lr,"C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/CNV_ML/cnv_ml_app//lr_model_30.rds")

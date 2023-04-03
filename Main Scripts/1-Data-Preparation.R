@@ -227,7 +227,7 @@ DF =
   mutate(across(contains("SDQ") & !contains("Imp"), ~recode(.x, `1`=0, `2`=1, `3`=2)))
 
 
-## Recode Health and Development Variables =====
+## Health and Development Variables =====
 
 ## Health and development variables recoding to 1/0 - apart from the Health-dev variables
 #that are continuous or ordinal
@@ -236,6 +236,8 @@ DF =
   DF |>
   mutate(P_Health_dev_4 = map(P_Health_dev_4,~ifelse(.x == "60-72",NA,.x))) |>
   mutate(P_Health_dev_4 = P_Health_dev_4 |> as.numeric()) |>
+  
+  #Reverse code some variables
   mutate(across(c(P_Health_dev_7:P_Health_dev_29,P_Health_dev_34f),~recode(.x, `1`=1, `2`=0, `22`=0))) |>
   
   #Remove some exceptional cases where there are results not in the key
