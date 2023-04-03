@@ -5,9 +5,10 @@ account: nadonnelly
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 7782951
-bundleId: 6577681
+bundleId: 7043100
 url: https://nadonnelly.shinyapps.io/cnv_ml_app/
-when: 1669909565.75598
-lastSyncTime: 1669909565.75599
+when: 1680532594.29836
+lastSyncTime: 1680532594.29837
 asMultiple: FALSE
 asStatic: FALSE
+ignoredFiles: old_models/lr_model_30.rds|old_models/svm_model_30.rds|old_models/svm_model_4.rds

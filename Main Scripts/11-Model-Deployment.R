@@ -31,7 +31,7 @@ setwd(data_dir)
 #These are the 30 variable models
 d_var_select_results = read_rds("nested_cv_result_selected_vars_v2.rds")
 
-#This is the 4 variable model
+#This is the 5 variable model
 d_var_ega_results    = read_rds("nested_cv_result_ega_vars.rds")
 
 #This is the test data
@@ -68,9 +68,7 @@ best_mods =
                                metrics = metric_set(accuracy,kap,mn_log_loss,roc_auc,gain_capture))) |>
   mutate(best_metrics = map(test_fit, ~.x$.metrics[[1]]))
 
-# 
-# best_mods$best_params[[1]]
-# best_mods$best_wf_final[[1]]
+
 
 best_mods |> 
   select(var_set,best_metrics) |> 
@@ -129,7 +127,7 @@ d_fit_30 =
   nest() |>
   mutate(unique_var = map(data,unique)) |>
   select(-data) |>
-  mutate(r_c = map(unique_var,~slice_sample(.x, n = 1000000, replace = T) |> pull(value))) |>
+  mutate(r_c = map(unique_var,~slice_sample(.x, n = 1e6, replace = T) |> pull(value))) |>
   select(-unique_var) |>
   pivot_wider(names_from = "name",values_from = "r_c") |>
   unnest(everything())
@@ -163,7 +161,7 @@ p_ega =
 
 #Calibration of the 5 item model sucks
 
-#For the full 30 variable RF model a threhsold of 0.835 was optimal
+#For the full 30 variable RF model a threshold of 0.835 was optimal
 p_30 = 
   bind_cols(
     d_fit_30,
@@ -234,19 +232,12 @@ butchered_wf |>
 #lets save our model
 write_rds(butchered_wf,"C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/CNV_ML/cnv_ml_app/rf_model_30.rds")
 
-#Lets do the same for the 4 item model
+#Lets do the same for the 5 item model
 butchered_wf_5 = 
   butcher::butcher(best_mods$test_fit[[1]]$.workflow[[1]])
 
 
 write_rds(butchered_wf_5,"C://Users/nadon/OneDrive - University of Bristol/Documents/CNV Item Reduction/CNV_ML/cnv_ml_app/en_model_5.rds")
-
-
-# Vetiver? =====
-
-#This is a package for ML model deployment
-
-
 
 
 
@@ -514,8 +505,6 @@ boot_pd =
   mutate(performance = paste(value,"[",.lower,",",.upper,"]",sep = " ")) |>
   select(name,performance,pd)
 
-#So there you go, there isn't really any reason to bother with the SVM or all the electricity that we burned
-#to get to the final SVM, we could have just done LR the whole time!
 
 #Lets butcher and save our 30 item LR model
 butchered_lr = 
