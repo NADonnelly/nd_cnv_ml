@@ -28,4 +28,4 @@ The Main Scripts folder contains the R scripts that do the analysis:
 
 * 11-Model-Deployment.R contains code for making models for the accompanying [shiny app](https://nadonnelly.shinyapps.io/cnv_ml_app/)
 
-The 
+The cnv_ml_app folder contains the app (app.R) and the accompanying model files
